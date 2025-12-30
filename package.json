@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "@rainbow-me/rainbowkit": "^2.2.10",
+    "@zk-email/sdk": "^2.0.11",
+    "react-hot-toast": "^2.6.0"
+  }
+}

@@ -1,0 +1,23 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+solc = "0.8.24"
+optimizer = true
+optimizer_runs = 200
+
+# Remappings
+remappings = [
+    "@openzeppelin/=lib/openzeppelin-contracts/",
+]
+
+# Testing
+ffi = false
+verbosity = 3
+
+# Chain settings per Base Sepolia
+[rpc_endpoints]
+base_sepolia = "${RPC_URL}"
+
+[etherscan]
+base_sepolia = { key = "${BASESCAN_API_KEY}", url = "https://api-sepolia.basescan.org/api" }
