@@ -1,5 +1,4 @@
 'use client';
-
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import Link from 'next/link';
 
@@ -41,6 +40,12 @@ export function Header() {
               className="text-gray-300 hover:text-white transition"
             >
               Submit Proof
+            </Link>
+            <Link 
+              href="/claim" 
+              className="text-gray-300 hover:text-white transition"
+            >
+              Claim Reward
             </Link>
           </nav>
 

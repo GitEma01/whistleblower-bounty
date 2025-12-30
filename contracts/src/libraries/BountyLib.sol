@@ -44,7 +44,7 @@ library BountyLib {
     }
 
     /// @notice Durata del periodo di disputa (24 ore)
-    uint256 constant DISPUTE_PERIOD = 24 hours;
+    uint256 constant DISPUTE_PERIOD = 5 minutes;
 
     /// @notice Durata minima di un bounty (7 giorni)
     uint256 constant MIN_BOUNTY_DURATION = 7 days;
