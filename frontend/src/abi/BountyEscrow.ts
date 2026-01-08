@@ -19,7 +19,9 @@ export const BountyEscrowABI = [
           { "name": "pi_c", "type": "uint256[2]" },
           { "name": "publicSignals", "type": "uint256[]" }
         ]
-      }
+      },
+      { "name": "_provenDomain", "type": "string" },
+      { "name": "_keywordHashes", "type": "bytes32[]" }
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
@@ -63,7 +65,9 @@ export const BountyEscrowABI = [
           { "name": "deadline", "type": "uint256" },
           { "name": "status", "type": "uint8" },
           { "name": "creator", "type": "address" },
-          { "name": "createdAt", "type": "uint256" }
+          { "name": "createdAt", "type": "uint256" },
+          { "name": "keywords", "type": "string[]" },
+          { "name": "hashedKeywords", "type": "bytes32[]" }
         ]
       }
     ],
@@ -85,6 +89,27 @@ export const BountyEscrowABI = [
         ]
       }
     ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getKeywords",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "string[]" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getHashedKeywords",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "bytes32[]" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getKeywordCount",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "uint256" }],
     "stateMutability": "view"
   },
   {
@@ -133,6 +158,14 @@ export const BountyEscrowABI = [
     "inputs": [
       { "name": "disputant", "type": "address", "indexed": true },
       { "name": "reason", "type": "string", "indexed": false }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "RefundProcessed",
+    "inputs": [
+      { "name": "contributor", "type": "address", "indexed": true },
+      { "name": "amount", "type": "uint256", "indexed": false }
     ]
   }
 ] as const;

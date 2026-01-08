@@ -50,6 +50,14 @@ export default function BountyDetailPage() {
     args: [BigInt(bountyId || 0)],
   });
 
+  // Leggi le keywords richieste
+  const { data: requiredKeywords } = useReadContract({
+    address: CONTRACTS.BOUNTY_FACTORY,
+    abi: BountyFactoryABI,
+    functionName: 'getBountyKeywords',
+    args: [BigInt(bountyId || 0)],
+  });
+
   // Contribuzione
   const { data: contributeHash, writeContract: contribute, isPending: isContributing } = useWriteContract();
   const { isLoading: isConfirmingContribute, isSuccess: contributeSuccess } = useWaitForTransactionReceipt({
@@ -102,6 +110,7 @@ export default function BountyDetailPage() {
   const deadlineDate = new Date(Number(bountyData.deadline) * 1000);
   const isExpired = deadlineDate < new Date();
   const status = Number(bountyData.status);
+  const keywordCount = bountyData.hashedKeywords?.length || 0;
 
   return (
     <div className="min-h-screen bg-gray-900">
@@ -128,6 +137,29 @@ export default function BountyDetailPage() {
           </div>
           
           <p className="text-gray-300 mb-6">{bountyData.description}</p>
+
+          {/* Keywords Section */}
+          {keywordCount > 0 && (
+            <div className="mb-6 p-4 bg-purple-900/30 rounded-lg border border-purple-700">
+              <h3 className="text-sm font-semibold text-purple-400 mb-2">
+                🔑 Keywords Richieste ({keywordCount})
+              </h3>
+              <p className="text-xs text-gray-400 mb-2">
+                L'email del whistleblower deve contenere tutte queste parole chiave per poter claimare.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {(requiredKeywords as `0x${string}`[])?.map((hash, index) => (
+                  <span
+                    key={index}
+                    className="bg-purple-900/50 text-purple-300 px-3 py-1 rounded-full text-xs font-mono"
+                    title={hash}
+                  >
+                    Hash #{index + 1}: {hash.slice(0, 10)}...
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
@@ -199,12 +231,24 @@ export default function BountyDetailPage() {
             <h3 className="text-lg font-semibold text-white mb-4">📧 Sottometti Prova</h3>
             
             {status === 0 && !isExpired ? (
-              <Link
-                href={`/submit-proof?bountyId=${bountyId}`}
-                className="block w-full text-center bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-lg font-medium transition"
-              >
-                Genera e Sottometti Prova ZK
-              </Link>
+              <>
+                <p className="text-sm text-gray-400 mb-4">
+                  Per claimare questo bounty devi:
+                </p>
+                <ul className="text-xs text-gray-400 mb-4 space-y-1">
+                  <li>• Avere un'email da @{bountyData.domain}</li>
+                  {keywordCount > 0 && (
+                    <li>• L'email deve contenere {keywordCount} keyword(s) specifiche</li>
+                  )}
+                  <li>• Generare una prova ZK valida</li>
+                </ul>
+                <Link
+                  href={`/submit-proof?bountyId=${bountyId}`}
+                  className="block w-full text-center bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-lg font-medium transition"
+                >
+                  Genera e Sottometti Prova ZK
+                </Link>
+              </>
             ) : (
               <p className="text-gray-400">
                 {status === 1 ? 'Prova già sottomessa, in attesa di claim' :
@@ -212,6 +256,31 @@ export default function BountyDetailPage() {
                  isExpired ? 'Bounty scaduto' : 'Non disponibile'}
               </p>
             )}
+          </div>
+        </div>
+
+        {/* Additional Info */}
+        <div className="mt-6 bg-gray-800/50 rounded-lg p-6 border border-gray-700">
+          <h3 className="text-lg font-semibold text-white mb-4">ℹ️ Informazioni</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <div>
+              <span className="text-gray-400">Dominio richiesto:</span>
+              <span className="ml-2 text-white font-mono">@{bountyData.domain}</span>
+            </div>
+            <div>
+              <span className="text-gray-400">Keywords richieste:</span>
+              <span className="ml-2 text-purple-400">{keywordCount}</span>
+            </div>
+            <div>
+              <span className="text-gray-400">Periodo disputa:</span>
+              <span className="ml-2 text-white">24 ore</span>
+            </div>
+            <div>
+              <span className="text-gray-400">Creato il:</span>
+              <span className="ml-2 text-white">
+                {new Date(Number(bountyData.createdAt) * 1000).toLocaleDateString()}
+              </span>
+            </div>
           </div>
         </div>
       </main>

@@ -37,6 +37,7 @@ export default function BountiesPage() {
           deadline: data.deadline,
           status: data.status,
           creator: data.creator,
+          keywordCount: data.hashedKeywords?.length || 0,
         };
       }
       return null;
@@ -63,6 +64,14 @@ export default function BountiesPage() {
           </Link>
         </div>
 
+        {/* Filters */}
+        <div className="mb-6 flex gap-4">
+          <div className="flex items-center gap-2 text-sm text-gray-400">
+            <span>Filtri:</span>
+            <span className="bg-gray-800 px-3 py-1 rounded-full">Tutti</span>
+          </div>
+        </div>
+
         {isLoading ? (
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto"></div>
@@ -80,12 +89,13 @@ export default function BountiesPage() {
                 deadline={bounty.deadline}
                 status={bounty.status}
                 creator={bounty.creator}
+                keywordCount={bounty.keywordCount}
               />
             ))}
           </div>
         ) : (
           <div className="text-center py-12 bg-gray-800 rounded-lg border border-gray-700">
-            <div className="text-5xl mb-4">📭</div>
+            <div className="text-5xl mb-4">🔭</div>
             <h3 className="text-xl font-semibold text-white mb-2">
               Nessun bounty trovato
             </h3>
@@ -104,3 +114,4 @@ export default function BountiesPage() {
     </div>
   );
 }
+

@@ -11,7 +11,8 @@ export const BountyFactoryABI = [
     "inputs": [
       { "name": "_domain", "type": "string" },
       { "name": "_description", "type": "string" },
-      { "name": "_deadline", "type": "uint256" }
+      { "name": "_deadline", "type": "uint256" },
+      { "name": "_keywords", "type": "string[]" }
     ],
     "outputs": [
       { "name": "bountyId", "type": "uint256" },
@@ -37,7 +38,9 @@ export const BountyFactoryABI = [
           { "name": "deadline", "type": "uint256" },
           { "name": "status", "type": "uint8" },
           { "name": "creator", "type": "address" },
-          { "name": "createdAt", "type": "uint256" }
+          { "name": "createdAt", "type": "uint256" },
+          { "name": "keywords", "type": "string[]" },
+          { "name": "hashedKeywords", "type": "bytes32[]" }
         ]
       }
     ],
@@ -68,6 +71,24 @@ export const BountyFactoryABI = [
   },
   {
     "type": "function",
+    "name": "getBountyKeywords",
+    "inputs": [
+      { "name": "_bountyId", "type": "uint256" }
+    ],
+    "outputs": [{ "name": "", "type": "string[]" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getBountyKeywordHashes",
+    "inputs": [
+      { "name": "_bountyId", "type": "uint256" }
+    ],
+    "outputs": [{ "name": "", "type": "bytes32[]" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "getStats",
     "inputs": [],
     "outputs": [
@@ -83,10 +104,11 @@ export const BountyFactoryABI = [
     "inputs": [
       { "name": "bountyId", "type": "uint256", "indexed": true },
       { "name": "creator", "type": "address", "indexed": true },
+      { "name": "escrowAddress", "type": "address", "indexed": false },
       { "name": "domain", "type": "string", "indexed": false },
       { "name": "reward", "type": "uint256", "indexed": false },
-      { "name": "escrowAddress", "type": "address", "indexed": false }
+      { "name": "deadline", "type": "uint256", "indexed": false },
+      { "name": "keywordCount", "type": "uint256", "indexed": false }
     ]
   }
 ] as const;
-

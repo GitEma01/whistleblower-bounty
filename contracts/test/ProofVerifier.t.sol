@@ -63,6 +63,100 @@ contract ProofVerifierTest is Test {
         assertFalse(result);
     }
 
+    function test_VerifyDomainMatch_ExactMatch() public view {
+        bool result = verifier.verifyDomainMatch("gmail.com", "gmail.com");
+        assertTrue(result);
+    }
+
+    function test_VerifyDomainMatch_CaseInsensitive() public view {
+        assertTrue(verifier.verifyDomainMatch("GMAIL.COM", "gmail.com"));
+        assertTrue(verifier.verifyDomainMatch("Gmail.Com", "gmail.com"));
+        assertTrue(verifier.verifyDomainMatch("gmail.com", "GMAIL.COM"));
+    }
+
+    function test_VerifyDomainMatch_Mismatch() public view {
+        assertFalse(verifier.verifyDomainMatch("gmail.com", "yahoo.com"));
+        assertFalse(verifier.verifyDomainMatch("gmail.com", "gmail.org"));
+    }
+
+    function test_VerifyKeywords_AllPresent() public view {
+        bytes32[] memory provided = new bytes32[](2);
+        provided[0] = BountyLib.hashKeyword("fraud");
+        provided[1] = BountyLib.hashKeyword("confidential");
+
+        bytes32[] memory required = new bytes32[](2);
+        required[0] = BountyLib.hashKeyword("fraud");
+        required[1] = BountyLib.hashKeyword("confidential");
+
+        bool result = verifier.verifyKeywords(provided, required);
+        assertTrue(result);
+    }
+
+    function test_VerifyKeywords_ExtraProvided() public view {
+        bytes32[] memory provided = new bytes32[](3);
+        provided[0] = BountyLib.hashKeyword("fraud");
+        provided[1] = BountyLib.hashKeyword("confidential");
+        provided[2] = BountyLib.hashKeyword("extra");
+
+        bytes32[] memory required = new bytes32[](2);
+        required[0] = BountyLib.hashKeyword("fraud");
+        required[1] = BountyLib.hashKeyword("confidential");
+
+        bool result = verifier.verifyKeywords(provided, required);
+        assertTrue(result);
+    }
+
+    function test_VerifyKeywords_MissingRequired() public view {
+        bytes32[] memory provided = new bytes32[](1);
+        provided[0] = BountyLib.hashKeyword("fraud");
+
+        bytes32[] memory required = new bytes32[](2);
+        required[0] = BountyLib.hashKeyword("fraud");
+        required[1] = BountyLib.hashKeyword("confidential");
+
+        bool result = verifier.verifyKeywords(provided, required);
+        assertFalse(result);
+    }
+
+    function test_VerifyKeywords_EmptyRequired() public view {
+        bytes32[] memory provided = new bytes32[](2);
+        provided[0] = BountyLib.hashKeyword("fraud");
+        provided[1] = BountyLib.hashKeyword("confidential");
+
+        bytes32[] memory required = new bytes32[](0);
+
+        // Se non ci sono keyword richieste, dovrebbe sempre passare
+        bool result = verifier.verifyKeywords(provided, required);
+        assertTrue(result);
+    }
+
+    function test_VerifyKeywords_WrongKeywords() public view {
+        bytes32[] memory provided = new bytes32[](2);
+        provided[0] = BountyLib.hashKeyword("wrong");
+        provided[1] = BountyLib.hashKeyword("keywords");
+
+        bytes32[] memory required = new bytes32[](2);
+        required[0] = BountyLib.hashKeyword("fraud");
+        required[1] = BountyLib.hashKeyword("confidential");
+
+        bool result = verifier.verifyKeywords(provided, required);
+        assertFalse(result);
+    }
+
+    function test_VerifyKeywords_DifferentOrder() public view {
+        // L'ordine non dovrebbe importare
+        bytes32[] memory provided = new bytes32[](2);
+        provided[0] = BountyLib.hashKeyword("confidential");
+        provided[1] = BountyLib.hashKeyword("fraud");
+
+        bytes32[] memory required = new bytes32[](2);
+        required[0] = BountyLib.hashKeyword("fraud");
+        required[1] = BountyLib.hashKeyword("confidential");
+
+        bool result = verifier.verifyKeywords(provided, required);
+        assertTrue(result);
+    }
+
     function test_ExtractDomainHash() public view {
         uint256[] memory signals = new uint256[](3);
         signals[0] = 12345;
@@ -83,52 +177,33 @@ contract ProofVerifierTest is Test {
         assertEq(nullifier, expected);
     }
 
-    function test_VerifyDomain() public view {
-        // In test mode, dovrebbe sempre restituire true per domini non vuoti
-        bool result = verifier.verifyDomain(12345, "gmail.com");
-        assertTrue(result);
+    function test_ExtractKeywordHashes() public view {
+        uint256[] memory signals = new uint256[](5);
+        signals[0] = 111; // domain
+        signals[1] = 222; // nullifier part
+        signals[2] = 333; // keyword 1
+        signals[3] = 444; // keyword 2
+        signals[4] = 555; // keyword 3
+
+        bytes32[] memory hashes = verifier.extractKeywordHashes(signals);
+        assertEq(hashes.length, 3);
+        assertEq(hashes[0], bytes32(uint256(333)));
+        assertEq(hashes[1], bytes32(uint256(444)));
+        assertEq(hashes[2], bytes32(uint256(555)));
     }
 
-    function test_VerifyDomain_EmptyDomain() public view {
-        bool result = verifier.verifyDomain(12345, "");
-        assertFalse(result);
+    function test_HashKeyword() public view {
+        bytes32 hash = verifier.hashKeyword("fraud");
+        bytes32 expected = BountyLib.hashKeyword("fraud");
+        assertEq(hash, expected);
     }
 
-    function test_VerifyProof_TestMode_RealZkEmailProof() public view {
-        // Simula una prova reale con 8 public signals (come ZK Email)
-        uint256[] memory signals = new uint256[](8);
-        signals[0] = 17065011482015124977282970298439631182550457267344513671014250909064553612521;
-        signals[1] = 52352752354244467950513147857578709131;
-        signals[2] = 274064983910760223810904298937823921978;
-        signals[3] = 2334392307038315863;
-        signals[4] = 0;
-        signals[5] = 902461930945294469469049061864238462133168371753019686485682756284276;
-        signals[6] = 0;
-        signals[7] = 0;
-
-        BountyLib.ProofData memory proof = BountyLib.ProofData({
-            pi_a: [
-                uint256(14916079991776342201899674931232934415495724139882818819230159627800747431829),
-                uint256(11257789964614083959671383197648530154954556430084048945119176966146937392300)
-            ],
-            pi_b: [
-                [
-                    uint256(18564540719021881727936237954817807018180452792251788944542920453460056782563),
-                    uint256(9831694138768169639975554572983492952369492205881989964429367187441943328801)
-                ],
-                [
-                    uint256(3841163460112717194209295801042398376758978009035516475436502745093784281376),
-                    uint256(11825019136187687624903955036892556571353216692921743802649997711567566289760)
-                ]
-            ],
-            pi_c: [
-                uint256(20478624148861993040029601760700853954690223282076268502837761758833672923249),
-                uint256(14351020537829825831305330828835455924529606786148467626351291954568970483214)
-            ],
-            publicSignals: signals
-        });
-
-        bool result = verifier.verifyProof(proof);
-        assertTrue(result);
+    function test_HashKeyword_CaseInsensitive() public view {
+        bytes32 hash1 = verifier.hashKeyword("FRAUD");
+        bytes32 hash2 = verifier.hashKeyword("fraud");
+        bytes32 hash3 = verifier.hashKeyword("Fraud");
+        
+        assertEq(hash1, hash2);
+        assertEq(hash2, hash3);
     }
 }

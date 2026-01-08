@@ -5,19 +5,34 @@ libs = ["lib"]
 solc = "0.8.24"
 optimizer = true
 optimizer_runs = 200
+via_ir = true
 
 # Remappings
 remappings = [
     "@openzeppelin/=lib/openzeppelin-contracts/",
+    "forge-std/=lib/forge-std/src/",
 ]
 
 # Testing
 ffi = false
 verbosity = 3
+fuzz = { runs = 256 }
 
 # Chain settings per Base Sepolia
 [rpc_endpoints]
 base_sepolia = "${RPC_URL}"
+localhost = "http://127.0.0.1:8545"
 
 [etherscan]
 base_sepolia = { key = "${BASESCAN_API_KEY}", url = "https://api-sepolia.basescan.org/api" }
+
+# Format
+[fmt]
+bracket_spacing = true
+int_types = "long"
+line_length = 120
+multiline_func_header = "attributes_first"
+number_underscore = "thousands"
+quote_style = "double"
+tab_width = 4
+wrap_comments = true

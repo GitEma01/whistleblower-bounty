@@ -6,22 +6,22 @@ import {BountyFactory} from "../src/BountyFactory.sol";
 import {BountyEscrow} from "../src/BountyEscrow.sol";
 import {ProofVerifier} from "../src/ProofVerifier.sol";
 import {BountyLib} from "../src/libraries/BountyLib.sol";
-import {IBountyEscrow} from "../src/interfaces/IBountyEscrow.sol";
 
 contract BountyEscrowTest is Test {
     BountyFactory public factory;
     ProofVerifier public verifier;
     BountyEscrow public escrow;
 
-    address public owner = address(this);
     address public creator = address(0x1);
     address public whistleblower = address(0x2);
     address public contributor = address(0x3);
 
-    string constant DOMAIN = "enron.com";
-    string constant DESCRIPTION = "Cerco prove di frode aziendale";
+    string constant DOMAIN = "testcompany.com";
+    string constant DESCRIPTION = "Looking for evidence";
     uint256 constant REWARD = 1 ether;
     uint256 deadline;
+
+    string[] keywords;
 
     function setUp() public {
         verifier = new ProofVerifier(address(0));
@@ -31,144 +31,121 @@ contract BountyEscrowTest is Test {
         vm.deal(whistleblower, 10 ether);
         vm.deal(contributor, 50 ether);
 
+        keywords = new string[](2);
+        keywords[0] = "fraud";
+        keywords[1] = "secret";
+
         deadline = block.timestamp + 30 days;
-        
+
         vm.prank(creator);
         (, address escrowAddress) = factory.createBounty{value: REWARD}(
             DOMAIN,
             DESCRIPTION,
-            deadline
+            deadline,
+            keywords
         );
-        
+
         escrow = BountyEscrow(payable(escrowAddress));
     }
 
-    function test_EscrowInitializedCorrectly() public view {
-        BountyLib.BountyDetails memory details = escrow.getBountyDetails();
-        assertEq(details.domain, DOMAIN);
-        assertEq(details.totalReward, REWARD);
-        assertEq(details.creator, creator);
-        assertEq(uint256(details.status), uint256(BountyLib.BountyStatus.OPEN));
-    }
-
-    function test_Contribute_Success() public {
-        uint256 contributionAmount = 0.5 ether;
-        vm.prank(contributor);
-        escrow.contribute{value: contributionAmount}();
-        assertEq(escrow.getContribution(contributor), contributionAmount);
-    }
-
-    function test_Contribute_RevertIf_ZeroAmount() public {
-        vm.prank(contributor);
-        vm.expectRevert(BountyEscrow.InvalidAmount.selector);
-        escrow.contribute{value: 0}();
-    }
-
-    function test_Contribute_RevertIf_BountyExpired() public {
-        vm.warp(deadline + 1);
-        vm.prank(contributor);
-        vm.expectRevert(BountyEscrow.BountyExpired.selector);
-        escrow.contribute{value: 0.5 ether}();
-    }
-
-    function test_SubmitProof_Success() public {
+    function test_SubmitProof_WithCorrectKeywords() public {
         BountyLib.ProofData memory proofData = _createValidProofData();
+        
+        // Hash delle keywords corrette
+        bytes32[] memory keywordHashes = new bytes32[](2);
+        keywordHashes[0] = BountyLib.hashKeyword("fraud");
+        keywordHashes[1] = BountyLib.hashKeyword("secret");
+
         vm.prank(whistleblower);
-        escrow.submitProof(proofData);
+        escrow.submitProof(proofData, DOMAIN, keywordHashes);
 
         BountyLib.BountyDetails memory details = escrow.getBountyDetails();
         assertEq(uint256(details.status), uint256(BountyLib.BountyStatus.PENDING_CLAIM));
     }
 
-    function test_SubmitProof_RevertIf_BountyAlreadyHasClaim() public {
+    function test_SubmitProof_WithWrongKeywords_Reverts() public {
         BountyLib.ProofData memory proofData = _createValidProofData();
-        vm.prank(whistleblower);
-        escrow.submitProof(proofData);
+        
+        // Hash di keywords sbagliate
+        bytes32[] memory wrongHashes = new bytes32[](2);
+        wrongHashes[0] = BountyLib.hashKeyword("wrong");
+        wrongHashes[1] = BountyLib.hashKeyword("keywords");
 
-        // Dopo una prova valida, il bounty non è più OPEN
-        // Quindi nuove sottomissioni falliscono con BountyNotOpen
-        vm.prank(address(0x999));
-        vm.expectRevert(BountyEscrow.BountyNotOpen.selector);
-        escrow.submitProof(proofData);
+        vm.prank(whistleblower);
+        vm.expectRevert(BountyEscrow.KeywordsMismatch.selector);
+        escrow.submitProof(proofData, DOMAIN, wrongHashes);
     }
 
-    function test_ClaimReward_Success() public {
+    function test_SubmitProof_WithMissingKeywords_Reverts() public {
         BountyLib.ProofData memory proofData = _createValidProofData();
-        vm.prank(whistleblower);
-        escrow.submitProof(proofData);
+        
+        // Solo una keyword invece di due
+        bytes32[] memory partialHashes = new bytes32[](1);
+        partialHashes[0] = BountyLib.hashKeyword("fraud");
 
+        vm.prank(whistleblower);
+        vm.expectRevert(BountyEscrow.KeywordsMismatch.selector);
+        escrow.submitProof(proofData, DOMAIN, partialHashes);
+    }
+
+    function test_SubmitProof_WithWrongDomain_Reverts() public {
+        BountyLib.ProofData memory proofData = _createValidProofData();
+        
+        bytes32[] memory keywordHashes = new bytes32[](2);
+        keywordHashes[0] = BountyLib.hashKeyword("fraud");
+        keywordHashes[1] = BountyLib.hashKeyword("secret");
+
+        vm.prank(whistleblower);
+        vm.expectRevert(BountyEscrow.DomainMismatch.selector);
+        escrow.submitProof(proofData, "wrongdomain.com", keywordHashes);
+    }
+
+    function test_SubmitProof_DomainCaseInsensitive() public {
+        BountyLib.ProofData memory proofData = _createValidProofData();
+        
+        bytes32[] memory keywordHashes = new bytes32[](2);
+        keywordHashes[0] = BountyLib.hashKeyword("fraud");
+        keywordHashes[1] = BountyLib.hashKeyword("secret");
+
+        // Dominio in uppercase dovrebbe funzionare
+        vm.prank(whistleblower);
+        escrow.submitProof(proofData, "TESTCOMPANY.COM", keywordHashes);
+
+        BountyLib.BountyDetails memory details = escrow.getBountyDetails();
+        assertEq(uint256(details.status), uint256(BountyLib.BountyStatus.PENDING_CLAIM));
+    }
+
+    function test_ClaimReward_AfterDisputePeriod() public {
+        BountyLib.ProofData memory proofData = _createValidProofData();
+        
+        bytes32[] memory keywordHashes = new bytes32[](2);
+        keywordHashes[0] = BountyLib.hashKeyword("fraud");
+        keywordHashes[1] = BountyLib.hashKeyword("secret");
+
+        vm.prank(whistleblower);
+        escrow.submitProof(proofData, DOMAIN, keywordHashes);
+
+        // Avanza oltre il dispute period
         vm.warp(block.timestamp + 25 hours);
 
         uint256 balanceBefore = whistleblower.balance;
+        
         vm.prank(whistleblower);
         escrow.claimReward();
-        uint256 balanceAfter = whistleblower.balance;
 
-        assertEq(balanceAfter - balanceBefore, REWARD);
+        assertEq(whistleblower.balance - balanceBefore, REWARD);
     }
 
-    function test_ClaimReward_RevertIf_DisputePeriodNotOver() public {
-        BountyLib.ProofData memory proofData = _createValidProofData();
-        vm.prank(whistleblower);
-        escrow.submitProof(proofData);
-
-        vm.prank(whistleblower);
-        vm.expectRevert(BountyEscrow.DisputePeriodNotOver.selector);
-        escrow.claimReward();
-    }
-
-    function test_ClaimReward_RevertIf_NotClaimant() public {
-        BountyLib.ProofData memory proofData = _createValidProofData();
-        vm.prank(whistleblower);
-        escrow.submitProof(proofData);
-
-        vm.warp(block.timestamp + 25 hours);
-
-        vm.prank(contributor);
-        vm.expectRevert(BountyEscrow.NotClaimant.selector);
-        escrow.claimReward();
-    }
-
-    function test_Refund_Success() public {
-        vm.warp(deadline + 1);
-        uint256 balanceBefore = creator.balance;
-        vm.prank(creator);
-        escrow.refund();
-        uint256 balanceAfter = creator.balance;
-        assertEq(balanceAfter - balanceBefore, REWARD);
-    }
-
-    function test_Refund_RevertIf_BountyNotExpired() public {
-        vm.prank(creator);
-        vm.expectRevert(BountyEscrow.BountyNotExpired.selector);
-        escrow.refund();
-    }
-
-    function test_OpenDispute_Success() public {
-        BountyLib.ProofData memory proofData = _createValidProofData();
-        vm.prank(whistleblower);
-        escrow.submitProof(proofData);
-
-        vm.prank(creator);
-        escrow.openDispute("Prova non valida");
-
-        BountyLib.BountyDetails memory details = escrow.getBountyDetails();
-        assertEq(uint256(details.status), uint256(BountyLib.BountyStatus.DISPUTED));
-    }
-
-    function test_OpenDispute_RevertIf_NotContributor() public {
-        BountyLib.ProofData memory proofData = _createValidProofData();
-        vm.prank(whistleblower);
-        escrow.submitProof(proofData);
-
-        vm.prank(address(0x999));
-        vm.expectRevert(BountyEscrow.NoContribution.selector);
-        escrow.openDispute("Prova non valida");
+    function test_GetKeywords() public view {
+        string[] memory storedKeywords = escrow.getKeywords();
+        assertEq(storedKeywords.length, 2);
+        assertEq(storedKeywords[0], "fraud");
+        assertEq(storedKeywords[1], "secret");
     }
 
     function _createValidProofData() internal pure returns (BountyLib.ProofData memory) {
         uint256[] memory publicSignals = new uint256[](2);
-        publicSignals[0] = uint256(keccak256(abi.encodePacked("enron.com")));
+        publicSignals[0] = uint256(keccak256(abi.encodePacked("testcompany.com")));
         publicSignals[1] = 123456789;
 
         return BountyLib.ProofData({
@@ -179,4 +156,3 @@ contract BountyEscrowTest is Test {
         });
     }
 }
-

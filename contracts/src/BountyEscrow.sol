@@ -10,11 +10,24 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 /// @notice Gestisce i fondi e il ciclo di vita di un singolo bounty
 /// @dev Ogni bounty ha il proprio contratto escrow deployato dalla factory
 contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
-    
+
     // ============ STATE VARIABLES ============
 
-    /// @notice Dettagli del bounty
-    BountyLib.BountyDetails public bountyDetails;
+    /// @notice Dettagli base del bounty
+    uint256 public bountyId;
+    string public domain;
+    string public description;
+    uint256 public totalReward;
+    uint256 public deadline;
+    BountyLib.BountyStatus public status;
+    address public creator;
+    uint256 public createdAt;
+
+    /// @notice Keywords in chiaro (per lettura frontend)
+    string[] private _keywords;
+
+    /// @notice Keywords hashate (per verifica on-chain)
+    bytes32[] private _hashedKeywords;
 
     /// @notice Informazioni sul claim corrente
     BountyLib.ClaimInfo public claimInfo;
@@ -49,12 +62,14 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
     error NoContribution();
     error TransferFailed();
     error InvalidStatus();
+    error DomainMismatch();
+    error KeywordsMismatch();
 
     // ============ MODIFIERS ============
 
     modifier onlyWhenOpen() {
-        if (bountyDetails.status != BountyLib.BountyStatus.OPEN) revert BountyNotOpen();
-        if (block.timestamp >= bountyDetails.deadline) revert BountyExpired();
+        if (status != BountyLib.BountyStatus.OPEN) revert BountyNotOpen();
+        if (block.timestamp >= deadline) revert BountyExpired();
         _;
     }
 
@@ -66,38 +81,38 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
     // ============ CONSTRUCTOR ============
 
     /// @notice Inizializza il contratto escrow
-    /// @param _id ID del bounty
-    /// @param _domain Dominio email richiesto
-    /// @param _description Descrizione del bounty
-    /// @param _deadline Timestamp di scadenza
-    /// @param _creator Creatore del bounty
-    /// @param _proofVerifier Indirizzo del contratto verifier
     constructor(
         uint256 _id,
         string memory _domain,
         string memory _description,
         uint256 _deadline,
         address _creator,
-        address _proofVerifier
+        address _proofVerifier,
+        string[] memory _keywordsInput
     ) payable {
         require(_deadline > block.timestamp + BountyLib.MIN_BOUNTY_DURATION, "Deadline too soon");
         require(_deadline < block.timestamp + BountyLib.MAX_BOUNTY_DURATION, "Deadline too far");
         require(msg.value >= BountyLib.MIN_REWARD, "Reward too low");
         require(bytes(_domain).length > 0, "Domain required");
+        require(_keywordsInput.length <= BountyLib.MAX_KEYWORDS, "Too many keywords");
 
         factory = msg.sender;
         proofVerifier = IProofVerifier(_proofVerifier);
 
-        bountyDetails = BountyLib.BountyDetails({
-            id: _id,
-            domain: _domain,
-            description: _description,
-            totalReward: msg.value,
-            deadline: _deadline,
-            status: BountyLib.BountyStatus.OPEN,
-            creator: _creator,
-            createdAt: block.timestamp
-        });
+        bountyId = _id;
+        domain = _domain;
+        description = _description;
+        totalReward = msg.value;
+        deadline = _deadline;
+        status = BountyLib.BountyStatus.OPEN;
+        creator = _creator;
+        createdAt = block.timestamp;
+
+        // Salva keywords in chiaro e calcola hash
+        for (uint256 i = 0; i < _keywordsInput.length; i++) {
+            _keywords.push(_keywordsInput[i]);
+            _hashedKeywords.push(BountyLib.hashKeyword(_keywordsInput[i]));
+        }
 
         // Il creatore è il primo contributore
         contributions[_creator] = msg.value;
@@ -115,34 +130,41 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
         if (contributions[msg.sender] == 0) {
             contributors.push(msg.sender);
         }
-        
+
         contributions[msg.sender] += msg.value;
-        bountyDetails.totalReward += msg.value;
+        totalReward += msg.value;
 
         emit FundsAdded(msg.sender, msg.value);
     }
 
     /// @inheritdoc IBountyEscrow
-    function submitProof(BountyLib.ProofData calldata proofData) external onlyWhenOpen nonReentrant {
+    function submitProof(
+        BountyLib.ProofData calldata proofData,
+        string calldata provenDomain,
+        bytes32[] calldata keywordHashes
+    ) external onlyWhenOpen nonReentrant {
         // 1. Verifica la prova ZK
         bool isValid = proofVerifier.verifyProof(proofData);
         if (!isValid) revert InvalidProof();
 
-        // 2. Estrai e verifica il nullifier
+        // 2. Verifica il dominio (case-insensitive)
+        if (!_domainsMatch(provenDomain, domain)) revert DomainMismatch();
+
+        // 3. Verifica le keywords (se richieste)
+        if (_hashedKeywords.length > 0) {
+            if (!_verifyKeywordHashes(keywordHashes)) revert KeywordsMismatch();
+        }
+
+        // 4. Estrai e verifica il nullifier
         bytes32 nullifier = proofVerifier.extractNullifier(proofData.publicSignals);
         if (usedNullifiers[nullifier]) revert NullifierAlreadyUsed();
 
-        // 3. Verifica il dominio
-        uint256 domainHash = proofVerifier.extractDomainHash(proofData.publicSignals);
-        bool domainValid = proofVerifier.verifyDomain(domainHash, bountyDetails.domain);
-        if (!domainValid) revert InvalidProof();
-
-        // 4. Registra il nullifier come usato
+        // 5. Registra il nullifier come usato
         usedNullifiers[nullifier] = true;
 
-        // 5. Aggiorna lo stato
-        bountyDetails.status = BountyLib.BountyStatus.PENDING_CLAIM;
-        
+        // 6. Aggiorna lo stato
+        status = BountyLib.BountyStatus.PENDING_CLAIM;
+
         claimInfo = BountyLib.ClaimInfo({
             claimant: msg.sender,
             claimTimestamp: block.timestamp,
@@ -155,14 +177,12 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
 
     /// @inheritdoc IBountyEscrow
     function claimReward() external onlyClaimant nonReentrant {
-        if (bountyDetails.status != BountyLib.BountyStatus.PENDING_CLAIM) revert InvalidStatus();
+        if (status != BountyLib.BountyStatus.PENDING_CLAIM) revert InvalidStatus();
         if (block.timestamp < claimInfo.disputeDeadline) revert DisputePeriodNotOver();
 
-        // Aggiorna lo stato prima del trasferimento (pattern checks-effects-interactions)
-        bountyDetails.status = BountyLib.BountyStatus.CLAIMED;
-        uint256 reward = bountyDetails.totalReward;
+        status = BountyLib.BountyStatus.CLAIMED;
+        uint256 reward = totalReward;
 
-        // Trasferisci la ricompensa
         (bool success, ) = payable(claimInfo.claimant).call{value: reward}("");
         if (!success) revert TransferFailed();
 
@@ -171,17 +191,14 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
 
     /// @inheritdoc IBountyEscrow
     function refund() external nonReentrant {
-        // Verifica che il bounty sia scaduto e ancora OPEN
-        if (bountyDetails.status != BountyLib.BountyStatus.OPEN) revert InvalidStatus();
-        if (block.timestamp < bountyDetails.deadline) revert BountyNotExpired();
+        if (status != BountyLib.BountyStatus.OPEN) revert InvalidStatus();
+        if (block.timestamp < deadline) revert BountyNotExpired();
 
         uint256 contribution = contributions[msg.sender];
         if (contribution == 0) revert NoContribution();
 
-        // Aggiorna lo stato prima del trasferimento
         contributions[msg.sender] = 0;
-        
-        // Se è l'ultimo rimborso, marca come expired
+
         bool allRefunded = true;
         for (uint256 i = 0; i < contributors.length; i++) {
             if (contributions[contributors[i]] > 0) {
@@ -189,12 +206,11 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
                 break;
             }
         }
-        
+
         if (allRefunded) {
-            bountyDetails.status = BountyLib.BountyStatus.EXPIRED;
+            status = BountyLib.BountyStatus.EXPIRED;
         }
 
-        // Trasferisci il rimborso
         (bool success, ) = payable(msg.sender).call{value: contribution}("");
         if (!success) revert TransferFailed();
 
@@ -203,13 +219,11 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
 
     /// @inheritdoc IBountyEscrow
     function openDispute(string calldata reason) external {
-        if (bountyDetails.status != BountyLib.BountyStatus.PENDING_CLAIM) revert InvalidStatus();
+        if (status != BountyLib.BountyStatus.PENDING_CLAIM) revert InvalidStatus();
         if (block.timestamp >= claimInfo.disputeDeadline) revert DisputePeriodOver();
-
-        // Solo i contributori possono aprire dispute
         if (contributions[msg.sender] == 0) revert NoContribution();
 
-        bountyDetails.status = BountyLib.BountyStatus.DISPUTED;
+        status = BountyLib.BountyStatus.DISPUTED;
 
         emit DisputeOpened(msg.sender, reason);
     }
@@ -218,7 +232,18 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
 
     /// @inheritdoc IBountyEscrow
     function getBountyDetails() external view returns (BountyLib.BountyDetails memory) {
-        return bountyDetails;
+        return BountyLib.BountyDetails({
+            id: bountyId,
+            domain: domain,
+            description: description,
+            totalReward: totalReward,
+            deadline: deadline,
+            status: status,
+            creator: creator,
+            createdAt: createdAt,
+            keywords: _keywords,
+            hashedKeywords: _hashedKeywords
+        });
     }
 
     /// @inheritdoc IBountyEscrow
@@ -231,39 +256,87 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
         return usedNullifiers[nullifier];
     }
 
+    /// @notice Restituisce le keywords in chiaro
+    function getKeywords() external view returns (string[] memory) {
+        return _keywords;
+    }
+
+    /// @notice Restituisce gli hash delle keywords
+    function getHashedKeywords() external view returns (bytes32[] memory) {
+        return _hashedKeywords;
+    }
+
+    /// @notice Restituisce il numero di keywords richieste
+    function getKeywordCount() external view returns (uint256) {
+        return _keywords.length;
+    }
+
     /// @notice Restituisce la lista dei contributori
-    /// @return Array degli indirizzi dei contributori
     function getContributors() external view returns (address[] memory) {
         return contributors;
     }
 
     /// @notice Restituisce il contributo di un indirizzo specifico
-    /// @param contributor L'indirizzo del contributore
-    /// @return L'importo contribuito
     function getContribution(address contributor) external view returns (uint256) {
         return contributions[contributor];
     }
 
     /// @notice Verifica se il bounty è ancora attivo
-    /// @return true se il bounty è aperto e non scaduto
     function isActive() external view returns (bool) {
-        return bountyDetails.status == BountyLib.BountyStatus.OPEN && 
-               block.timestamp < bountyDetails.deadline;
+        return status == BountyLib.BountyStatus.OPEN &&
+               block.timestamp < deadline;
+    }
+
+    // ============ INTERNAL FUNCTIONS ============
+
+    /// @notice Confronta due domini in modo case-insensitive
+    function _domainsMatch(string memory a, string memory b) internal pure returns (bool) {
+        return keccak256(abi.encodePacked(_toLowerCase(a))) == 
+               keccak256(abi.encodePacked(_toLowerCase(b)));
+    }
+
+    /// @notice Converte una stringa in lowercase
+    function _toLowerCase(string memory str) internal pure returns (string memory) {
+        bytes memory bStr = bytes(str);
+        bytes memory bLower = new bytes(bStr.length);
+        for (uint256 i = 0; i < bStr.length; i++) {
+            if ((uint8(bStr[i]) >= 65) && (uint8(bStr[i]) <= 90)) {
+                bLower[i] = bytes1(uint8(bStr[i]) + 32);
+            } else {
+                bLower[i] = bStr[i];
+            }
+        }
+        return string(bLower);
+    }
+
+    /// @notice Verifica che tutti gli hash richiesti siano presenti
+    function _verifyKeywordHashes(bytes32[] calldata providedHashes) internal view returns (bool) {
+        // Ogni hash richiesto deve essere presente in providedHashes
+        for (uint256 i = 0; i < _hashedKeywords.length; i++) {
+            bool found = false;
+            for (uint256 j = 0; j < providedHashes.length; j++) {
+                if (_hashedKeywords[i] == providedHashes[j]) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) return false;
+        }
+        return true;
     }
 
     // ============ RECEIVE ============
 
-    /// @notice Permette di ricevere ETH direttamente (viene contato come contribuzione del sender)
     receive() external payable {
-        if (bountyDetails.status != BountyLib.BountyStatus.OPEN) revert BountyNotOpen();
-        if (block.timestamp >= bountyDetails.deadline) revert BountyExpired();
-        
+        if (status != BountyLib.BountyStatus.OPEN) revert BountyNotOpen();
+        if (block.timestamp >= deadline) revert BountyExpired();
+
         if (contributions[msg.sender] == 0) {
             contributors.push(msg.sender);
         }
-        
+
         contributions[msg.sender] += msg.value;
-        bountyDetails.totalReward += msg.value;
+        totalReward += msg.value;
 
         emit FundsAdded(msg.sender, msg.value);
     }

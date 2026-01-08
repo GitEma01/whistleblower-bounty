@@ -37,6 +37,7 @@ interface BountyCardProps {
   deadline: bigint;
   status: number;
   creator: string;
+  keywordCount?: number;
 }
 
 export function BountyCard({
@@ -47,6 +48,7 @@ export function BountyCard({
   deadline,
   status,
   creator,
+  keywordCount = 0,
 }: BountyCardProps) {
   const statusLabel = STATUS_LABELS[status] || 'OPEN';
   const statusColor = STATUS_COLORS[statusLabel];
@@ -73,6 +75,15 @@ export function BountyCard({
         {description}
       </p>
 
+      {/* Keywords Badge */}
+      {keywordCount > 0 && (
+        <div className="mb-4">
+          <span className="inline-flex items-center bg-purple-900/50 text-purple-300 px-3 py-1 rounded-full text-xs">
+            🔑 {keywordCount} keyword{keywordCount > 1 ? 's' : ''} richieste
+          </span>
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-2 gap-4 mb-4">
         <div>
@@ -93,7 +104,7 @@ export function BountyCard({
       <div className="mb-4">
         <span className="text-xs text-gray-400">Created by</span>
         <p className="text-sm text-gray-300 font-mono truncate">
-          {creator}
+          {creator.slice(0, 6)}...{creator.slice(-4)}
         </p>
       </div>
 
