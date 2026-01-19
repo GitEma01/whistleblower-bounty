@@ -240,6 +240,14 @@ export default function SubmitProofPage() {
     setError('');
   };
 
+  /**
+   * NUOVA IMPLEMENTAZIONE con SDK 3.0.0-nightly.13
+   * Segue il nuovo ReadMe:
+   * - import zkeSdk from "@zk-email/sdk";
+   * - const sdk = zkSdk();
+   * - const prover = blueprint.createProver({ isLocal: true }); // per local
+   * - Per remote: { isLocal: false } oppure omettere (default dovrebbe essere remote)
+   */
   const handleGenerateRealProof = async () => {
     if (!emailContent) {
       setError('Carica prima un file email');
@@ -263,32 +271,69 @@ export default function SubmitProofPage() {
 
     setIsGeneratingProof(true);
     setError('');
-    setProofProgress('Inizializzazione SDK...');
+    setProofProgress('Inizializzazione SDK (v3.0.0-nightly.13)...');
 
     try {
-      const { initZkEmailSdk } = await import('@zk-email/sdk');
+      // NUOVA SINTASSI SDK 3.0.0-nightly.13
+      // Il modulo ora esporta un default export
+      const zkeSdk = (await import('@zk-email/sdk')).default;
       
-      setProofProgress('Connessione al server...');
-      const sdk = await initZkEmailSdk();
+      setProofProgress('Connessione al server ZK Email...');
+      
+      // Inizializza SDK con logging per debug
+      const sdk = zkeSdk({ 
+        logging: { 
+          enabled: true, 
+          level: 'debug' 
+        } 
+      });
       
       setProofProgress(`Caricamento blueprint: ${blueprintSlug}`);
       const blueprint = await sdk.getBlueprint(blueprintSlug);
       
-      setProofProgress('Creazione prover...');
-      const prover = blueprint.createProver({ isRemote: true });
+      console.log('Blueprint caricato:', blueprint);
       
-      setProofProgress('Generazione prova ZK (30-60 secondi)...');
+      // Opzionale: Valida l'email prima di generare la prova
+      setProofProgress('Validazione email...');
+      try {
+        const isValidEmail = await blueprint.validateEmail(emailContent);
+        console.log('Email valida per questo blueprint:', isValidEmail);
+        if (!isValidEmail) {
+          throw new Error('Email non valida per questo blueprint. Verifica che l\'email corrisponda ai requisiti.');
+        }
+      } catch (validationError: any) {
+        console.warn('Errore validazione email (continuo comunque):', validationError.message);
+        // Continua comunque, la validazione potrebbe fallire per motivi non critici
+      }
+      
+      setProofProgress('Creazione prover (remote)...');
+      
+      // NUOVA SINTASSI: isLocal invece di isRemote
+      // isLocal: true = proving nel browser (più lento ma privato)
+      // isLocal: false = proving remoto (più veloce)
+      const prover = blueprint.createProver({ isLocal: false });
+      
+      setProofProgress('Generazione prova ZK (30-120 secondi)...');
+      console.log('Avvio generazione prova con email length:', emailContent.length);
 
+      // Genera la prova - il nuovo SDK potrebbe avere una sintassi leggermente diversa
       const proof = await prover.generateProof(emailContent);
       
-      setProofProgress('Verifica prova...');
+      console.log('Prova generata:', proof);
+      console.log('Proof props:', proof.props);
+      
+      setProofProgress('Verifica prova off-chain...');
       const isValid = await blueprint.verifyProof(proof);
+      console.log('Verifica off-chain:', isValid);
       
       if (!isValid) {
         throw new Error('La prova generata non è valida');
       }
       
+      // Estrai i dati della prova
       const proofDataRaw = proof.props.proofData;
+      console.log('Proof data raw:', proofDataRaw);
+      
       const formattedProof = {
         pi_a: [BigInt(proofDataRaw.pi_a[0]), BigInt(proofDataRaw.pi_a[1])],
         pi_b: [
@@ -299,13 +344,31 @@ export default function SubmitProofPage() {
         publicSignals: proof.props.publicOutputs.map((s: string) => BigInt(s))
       };
       
+      console.log('Formatted proof:', formattedProof);
+      
       setProofData(formattedProof);
       setProofGenerated(true);
-      setProofProgress('Prova generata!');
+      setProofProgress('Prova generata con successo! ✅');
       
     } catch (err: any) {
-      console.error('Errore:', err);
-      setError(err.message || 'Errore nella generazione');
+      console.error('Errore generazione prova:', err);
+      
+      let errorMessage = err.message || 'Errore nella generazione della prova';
+      
+      // Gestione errori specifici
+      if (errorMessage.includes('TargetNotRepeatable')) {
+        errorMessage = 'Errore Blueprint: La Regex del circuito non è valida. Contatta lo sviluppatore del blueprint.';
+      } else if (errorMessage.includes('DKIM')) {
+        errorMessage = 'Errore verifica DKIM: la firma dell\'email potrebbe non essere valida.';
+      } else if (errorMessage.includes('Remote proving failed')) {
+        errorMessage = 'Errore proving remoto: il server non è riuscito a generare la prova. Riprova tra qualche minuto.';
+      } else if (errorMessage.includes('blueprint')) {
+        errorMessage = `Blueprint "${blueprintSlug}" non trovato o non disponibile.`;
+      } else if (errorMessage.includes('timeout') || errorMessage.includes('Timeout')) {
+        errorMessage = 'Timeout: la generazione della prova ha impiegato troppo tempo. Riprova.';
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsGeneratingProof(false);
     }
@@ -493,7 +556,10 @@ export default function SubmitProofPage() {
               </div>
             ) : isGeneratingProof ? (
               <div className="bg-blue-900/30 rounded-lg p-4 border border-blue-700">
-                <p className="text-blue-400">{proofProgress}</p>
+                <div className="flex items-center">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-400 mr-3"></div>
+                  <p className="text-blue-400">{proofProgress}</p>
+                </div>
               </div>
             ) : (
               <div className="flex gap-3">
@@ -560,6 +626,9 @@ export default function SubmitProofPage() {
             </div>
             <p className="text-gray-500 text-xs mt-2">
               Altri domini funzionano solo in modalità Test (prova simulata).
+            </p>
+            <p className="text-gray-500 text-xs mt-1">
+              SDK: @zk-email/sdk v3.0.0-nightly.13
             </p>
           </div>
         </div>

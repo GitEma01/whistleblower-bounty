@@ -15,7 +15,7 @@ export const CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID) || 84532;
  * NOTA: Se Gmail dà errore "TargetNotRepeatable", la regex nel registry va semplificata.
  */
 export const DOMAIN_BLUEPRINTS: Record<string, string> = {
-  'gmail.com': 'GitEma01/GmailDebugBlueprint@v2',
+  'gmail.com': 'GitEma01/GmailDebugBlueprint@v4',
   'succinct.xyz': 'Bisht13/SuccinctZKResidencyInvite@v3', // Reverted to v3 (Stable) from v5
 };
 
