@@ -5,6 +5,11 @@ export const CONTRACTS = {
   PROOF_VERIFIER: process.env.NEXT_PUBLIC_PROOF_VERIFIER_ADDRESS as `0x${string}`,
 } as const;
 
+export const BLUEPRINTS = {
+  "gmail.com": "0x00E251c683212d803FE2caf753B059991e6C4D5d", // Verifier Gmail reale
+  "succinct.xyz": "0xD6FC8cb985AEf1dB7F601c2cD7007DA83f067848" // Verifier Succinct (o placeholder)
+};
+
 export const CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID) || 84532;
 
 // ============ MULTI-BLUEPRINT CONFIGURATION ============

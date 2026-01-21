@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { parseEther } from 'viem';
 import { BountyFactoryABI } from '@/abi/BountyFactory';
-import { CONTRACTS, isDomainSupported, SUPPORTED_DOMAINS } from '@/config/contracts';
+import { CONTRACTS, isDomainSupported, SUPPORTED_DOMAINS, BLUEPRINTS } from '@/config/contracts';
 import Link from 'next/link';
 
 const MAX_KEYWORDS = 5;
@@ -60,13 +60,25 @@ export default function CreateBountyPage() {
       addKeyword();
     }
   };
-
-  const handleSubmit = async (e: React.FormEvent) => {
+const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!domain || !description || !reward) {
       alert('Compila tutti i campi obbligatori');
       return;
+    }
+
+    // 1. Normalizza il dominio
+    const normalizedDomain = domain.toLowerCase().trim();
+
+    // 2. Recupera l'indirizzo del Verifier dalla configurazione (contracts.ts)
+    // TypeScript si lamenterà se accedi con una stringa generica, quindi usiamo "as keyof typeof"
+    // oppure un fallback sicuro.
+    const verifierAddress = BLUEPRINTS[normalizedDomain as keyof typeof BLUEPRINTS];
+
+    if (!verifierAddress) {
+        alert(`Attenzione: Il dominio @${normalizedDomain} non è configurato con un Verifier ZK valido.`);
+        return;
     }
 
     const nowInSeconds = Math.floor(Date.now() / 1000);
@@ -74,11 +86,25 @@ export default function CreateBountyPage() {
     const safetyMargin = 3600;
     const deadline = BigInt(nowInSeconds + durationInSeconds + safetyMargin);
 
+    console.log("Creating Bounty with params:", {
+        domain: normalizedDomain,
+        description,
+        deadline,
+        keywords,
+        verifierAddress // Verifica nella console che questo non sia undefined
+    });
+
     writeContract({
       address: CONTRACTS.BOUNTY_FACTORY,
       abi: BountyFactoryABI,
       functionName: 'createBounty',
-      args: [domain.toLowerCase(), description, deadline, keywords],
+      args: [
+        normalizedDomain, 
+        description, 
+        deadline, 
+        keywords,
+        verifierAddress // <--- Il famoso 5° argomento
+      ],
       value: parseEther(reward),
     });
   };

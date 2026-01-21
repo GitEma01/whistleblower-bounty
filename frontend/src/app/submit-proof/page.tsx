@@ -253,127 +253,105 @@ export default function SubmitProofPage() {
       setError('Carica prima un file email');
       return;
     }
-    
-    if (extractedDomain.toLowerCase() !== bountyDomain.toLowerCase()) {
-      setError(`Dominio non corrispondente. Richiesto: ${bountyDomain}, Trovato: ${extractedDomain}`);
-      return;
-    }
-    
-    if (!blueprintSlug) {
-      setError(`Nessun blueprint disponibile per il dominio ${bountyDomain}. Usa la modalità Test.`);
-      return;
-    }
-    
-    if (bountyKeywords.length > 0 && missingKeywords.length > 0) {
-      setError(`Keywords mancanti: ${missingKeywords.join(', ')}`);
-      return;
-    }
 
+    // Reset stati
     setIsGeneratingProof(true);
     setError('');
-    setProofProgress('Inizializzazione SDK (v3.0.0-nightly.13)...');
+    setProofProgress('Analisi DKIM e inizializzazione SDK...');
 
     try {
-      // NUOVA SINTASSI SDK 3.0.0-nightly.13
-      // Il modulo ora esporta un default export
-      const zkeSdk = (await import('@zk-email/sdk')).default;
-      
-      setProofProgress('Connessione al server ZK Email...');
-      
-      // Inizializza SDK con logging per debug
-      const sdk = zkeSdk({ 
-        logging: { 
-          enabled: true, 
-          level: 'debug' 
-        } 
-      });
-      
-      setProofProgress(`Caricamento blueprint: ${blueprintSlug}`);
-      const blueprint = await sdk.getBlueprint(blueprintSlug);
-      
-      console.log('Blueprint caricato:', blueprint);
-      
-      // Opzionale: Valida l'email prima di generare la prova
-      setProofProgress('Validazione email...');
-      try {
-        const isValidEmail = await blueprint.validateEmail(emailContent);
-        console.log('Email valida per questo blueprint:', isValidEmail);
-        if (!isValidEmail) {
-          throw new Error('Email non valida per questo blueprint. Verifica che l\'email corrisponda ai requisiti.');
-        }
-      } catch (validationError: any) {
-        console.warn('Errore validazione email (continuo comunque):', validationError.message);
-        // Continua comunque, la validazione potrebbe fallire per motivi non critici
+      // 1. ANALISI DKIM PRELIMINARE
+      // Determina quale blueprint usare basandosi sulla firma reale della mail
+      let targetBlueprintSlug = blueprintSlug; // Default: quello del bounty
+      const dkimMatch = emailContent.match(/d=([a-zA-Z0-9.-]+);/);
+      const signingDomain = dkimMatch ? dkimMatch[1] : null;
+
+      console.log(`📧 Email firmata da: ${signingDomain}`);
+
+      if (signingDomain === "gmail.com") {
+          console.log("🔄 Detected Gmail signature. Forcing Gmail Blueprint.");
+          // Usa SEMPRE questo blueprint se la mail è di Gmail, altrimenti il verifier on-chain fallisce
+          targetBlueprintSlug = "GitEma01/GmailDebugBlueprint@v4"; 
+      } else if (signingDomain === "succinct.xyz") {
+          targetBlueprintSlug = "Bisht13/SuccinctZKResidencyInvite@v3";
       }
-      
-      setProofProgress('Creazione prover (remote)...');
-      
-      // NUOVA SINTASSI: isLocal invece di isRemote
-      // isLocal: true = proving nel browser (più lento ma privato)
-      // isLocal: false = proving remoto (più veloce)
+
+      // 2. INIZIALIZZAZIONE SDK (v3.0.0 Syntax)
+      const zkeSdk = (await import('@zk-email/sdk')).default;
+      const sdk = zkeSdk({
+        logging: { enabled: true, level: 'info' } // Abilita log per debug
+      });
+
+      // 3. RECUPERO BLUEPRINT
+      setProofProgress(`Caricamento blueprint: ${targetBlueprintSlug}...`);
+      const blueprint = await sdk.getBlueprint(targetBlueprintSlug);
+
+      if (!blueprint) {
+        throw new Error(`Impossibile caricare il blueprint ${targetBlueprintSlug}`);
+      }
+
+      // 4. CREAZIONE PROVER & GENERAZIONE
+      // isLocal: false usa il server remoto (più veloce e stabile per circuiti grandi)
+      setProofProgress('Generazione prova ZK in corso (Remote)...');
       const prover = blueprint.createProver({ isLocal: false });
       
-      setProofProgress('Generazione prova ZK (30-120 secondi)...');
-      console.log('Avvio generazione prova con email length:', emailContent.length);
-
-      // Genera la prova - il nuovo SDK potrebbe avere una sintassi leggermente diversa
       const proof = await prover.generateProof(emailContent);
-      
-      console.log('Prova generata:', proof);
-      console.log('Proof props:', proof.props);
-      
-      setProofProgress('Verifica prova off-chain...');
-      const isValid = await blueprint.verifyProof(proof);
-      console.log('Verifica off-chain:', isValid);
-      
-      if (!isValid) {
-        throw new Error('La prova generata non è valida');
-      }
-      
-      // Estrai i dati della prova
+      console.log("✅ SDK Proof Generated:", proof);
+
+      // 5. FORMATTAZIONE DATI PER SOLIDITY (CRUCIALE)
+      // Copiamo la logica interna dell'SDK per formattare i dati per il contratto
+      setProofProgress('Formattazione dati per Smart Contract...');
+
       const proofDataRaw = proof.props.proofData;
-      console.log('Proof data raw:', proofDataRaw);
-      
+      const publicOutputsRaw = proof.props.publicOutputs;
+
+      // A. Conversione Public Signals
+      // Assicuriamoci che siano stringhe numeriche per BigInt
+      // 1. Array lineare diretto dall'SDK (NESSUNO SWAP QUI!)
+      // Il codice interno dell'SDK conferma che i segnali vanno passati così come sono.
+      const publicSignalsRaw = proof.props.publicOutputs.map((s: string) => BigInt(s));
+
+      console.log("🔍 Public Signals (RAW - Correct):", publicSignalsRaw);
+
+      // 2. Formattazione con SOLO lo swap di pi_b (Confermato dall'SDK)
       const formattedProof = {
-        pi_a: [BigInt(proofDataRaw.pi_a[0]), BigInt(proofDataRaw.pi_a[1])],
-        pi_b: [
-          [BigInt(proofDataRaw.pi_b[0][0]), BigInt(proofDataRaw.pi_b[0][1])],
-          [BigInt(proofDataRaw.pi_b[1][0]), BigInt(proofDataRaw.pi_b[1][1])]
+        pi_a: [
+            BigInt(proofDataRaw.pi_a[0]), 
+            BigInt(proofDataRaw.pi_a[1])
         ],
-        pi_c: [BigInt(proofDataRaw.pi_c[0]), BigInt(proofDataRaw.pi_c[1])],
-        publicSignals: proof.props.publicOutputs.map((s: string) => BigInt(s))
+        pi_b: [
+          // UNICO SWAP NECESSARIO: Scambia [0][1] con [0][0] ecc.
+          [BigInt(proofDataRaw.pi_b[0][1]), BigInt(proofDataRaw.pi_b[0][0])], 
+          [BigInt(proofDataRaw.pi_b[1][1]), BigInt(proofDataRaw.pi_b[1][0])]
+        ],
+        pi_c: [
+            BigInt(proofDataRaw.pi_c[0]), 
+            BigInt(proofDataRaw.pi_c[1])
+        ],
+        publicSignals: publicSignalsRaw // Array originale, non invertito
       };
+
+      // 3. Verifica visiva finale prima dell'invio
+      console.log("🚀 READY TO SUBMIT:", formattedProof);
       
-      console.log('Formatted proof:', formattedProof);
-      
+      // ... salvataggio stato
+      // 6. SALVATAGGIO STATO
+      // Salviamo anche il dominio estratto per passarlo a submitProof
+      setExtractedDomain(signingDomain || extractedDomain); 
       setProofData(formattedProof);
       setProofGenerated(true);
-      setProofProgress('Prova generata con successo! ✅');
-      
+      setProofProgress('Prova valida pronta per l\'invio! 🚀');
+
     } catch (err: any) {
-      console.error('Errore generazione prova:', err);
-      
-      let errorMessage = err.message || 'Errore nella generazione della prova';
-      
-      // Gestione errori specifici
-      if (errorMessage.includes('TargetNotRepeatable')) {
-        errorMessage = 'Errore Blueprint: La Regex del circuito non è valida. Contatta lo sviluppatore del blueprint.';
-      } else if (errorMessage.includes('DKIM')) {
-        errorMessage = 'Errore verifica DKIM: la firma dell\'email potrebbe non essere valida.';
-      } else if (errorMessage.includes('Remote proving failed')) {
-        errorMessage = 'Errore proving remoto: il server non è riuscito a generare la prova. Riprova tra qualche minuto.';
-      } else if (errorMessage.includes('blueprint')) {
-        errorMessage = `Blueprint "${blueprintSlug}" non trovato o non disponibile.`;
-      } else if (errorMessage.includes('timeout') || errorMessage.includes('Timeout')) {
-        errorMessage = 'Timeout: la generazione della prova ha impiegato troppo tempo. Riprova.';
-      }
-      
-      setError(errorMessage);
+      console.error('Errore generazione:', err);
+      let msg = err.message || 'Errore sconosciuto';
+      if (msg.includes('TargetNotRepeatable')) msg = "Errore Regex del Blueprint (troppe ripetizioni).";
+      if (msg.includes('500')) msg = "Errore Server Prover Remoto. Riprova tra poco.";
+      setError(msg);
     } finally {
       setIsGeneratingProof(false);
     }
   };
-
   const handleSubmitProof = () => {
     if (!proofData || !escrowAddress) {
       setError('Genera prima la prova');

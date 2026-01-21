@@ -24,7 +24,8 @@ contract BountyEscrowTest is Test {
     string[] keywords;
 
     function setUp() public {
-        verifier = new ProofVerifier(address(0));
+        // Deploy ProofVerifier in TEST MODE (true)
+        verifier = new ProofVerifier(true);
         factory = new BountyFactory(address(verifier));
 
         vm.deal(creator, 100 ether);
@@ -42,7 +43,8 @@ contract BountyEscrowTest is Test {
             DOMAIN,
             DESCRIPTION,
             deadline,
-            keywords
+            keywords,
+            address(0x123)
         );
 
         escrow = BountyEscrow(payable(escrowAddress));
@@ -141,6 +143,46 @@ contract BountyEscrowTest is Test {
         assertEq(storedKeywords.length, 2);
         assertEq(storedKeywords[0], "fraud");
         assertEq(storedKeywords[1], "secret");
+    }
+
+    function test_Contribute() public {
+        uint256 initialReward = escrow.totalReward();
+        
+        vm.prank(contributor);
+        escrow.contribute{value: 0.5 ether}();
+        
+        assertEq(escrow.totalReward(), initialReward + 0.5 ether);
+        assertEq(escrow.getContribution(contributor), 0.5 ether);
+    }
+
+    function test_Refund_AfterDeadline() public {
+        // Avanza oltre la deadline
+        vm.warp(deadline + 1);
+        
+        uint256 balanceBefore = creator.balance;
+        
+        vm.prank(creator);
+        escrow.refund();
+        
+        assertEq(creator.balance - balanceBefore, REWARD);
+    }
+
+    function test_OpenDispute() public {
+        BountyLib.ProofData memory proofData = _createValidProofData();
+        
+        bytes32[] memory keywordHashes = new bytes32[](2);
+        keywordHashes[0] = BountyLib.hashKeyword("fraud");
+        keywordHashes[1] = BountyLib.hashKeyword("secret");
+
+        vm.prank(whistleblower);
+        escrow.submitProof(proofData, DOMAIN, keywordHashes);
+
+        // Creator apre disputa
+        vm.prank(creator);
+        escrow.openDispute("Invalid proof evidence");
+
+        BountyLib.BountyDetails memory details = escrow.getBountyDetails();
+        assertEq(uint256(details.status), uint256(BountyLib.BountyStatus.DISPUTED));
     }
 
     function _createValidProofData() internal pure returns (BountyLib.ProofData memory) {
