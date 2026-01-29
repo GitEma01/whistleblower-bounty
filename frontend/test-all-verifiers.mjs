@@ -7,14 +7,13 @@ import fs from 'fs';
 const VERIFIER_ABI = [
   {
     inputs: [
-      { name: "proofType", type: "uint8" },
       { name: "a", type: "uint256[2]" },
       { name: "b", type: "uint256[2][2]" },
       { name: "c", type: "uint256[2]" },
       { name: "signals", type: "uint256[8]" }
     ],
     name: "verify",
-    outputs: [{ type: "bool" }],
+    outputs: [],
     stateMutability: "view",
     type: "function"
   }
@@ -65,8 +64,8 @@ async function main() {
       // Prepara i dati
       const pi_a = [BigInt(pd.pi_a[0]), BigInt(pd.pi_a[1])];
       const pi_b = [
-        [BigInt(pd.pi_b[0][0]), BigInt(pd.pi_b[0][1])],
-        [BigInt(pd.pi_b[1][0]), BigInt(pd.pi_b[1][1])]
+        [BigInt(pd.pi_b[0][1]), BigInt(pd.pi_b[0][0])], // Swap indices for Groth16
+        [BigInt(pd.pi_b[1][1]), BigInt(pd.pi_b[1][0])], // Swap indices for Groth16
       ];
       const pi_c = [BigInt(pd.pi_c[0]), BigInt(pd.pi_c[1])];
       
@@ -80,7 +79,7 @@ async function main() {
             address: vAddr,
             abi: VERIFIER_ABI,
             functionName: 'verify',
-            args: [1, pi_a, pi_b, pi_c, signals8]
+            args: [pi_a, pi_b, pi_c, signals8]
           });
           console.log(`  → Proof v${version} on verifier ${vName}: ${result ? '✅ VALID' : '❌ INVALID'}`);
         } catch (e) {
