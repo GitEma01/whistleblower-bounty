@@ -316,15 +316,15 @@ export default function SubmitProofPage() {
       // 2. Formattazione con SOLO lo swap di pi_b (Confermato dall'SDK)
       const formattedProof = {
         pi_a: [
-            BigInt(proofDataRaw.pi_a[0]), 
+            BigInt(proofDataRaw.pi_a[0]),
             BigInt(proofDataRaw.pi_a[1])
         ],
         pi_b: [
-          [BigInt(proofDataRaw.pi_b[0][0]), BigInt(proofDataRaw.pi_b[0][1])],
-          [BigInt(proofDataRaw.pi_b[1][0]), BigInt(proofDataRaw.pi_b[1][1])]
+          [BigInt(proofDataRaw.pi_b[0][1]), BigInt(proofDataRaw.pi_b[0][0])],
+          [BigInt(proofDataRaw.pi_b[1][1]), BigInt(proofDataRaw.pi_b[1][0])]
         ],
         pi_c: [
-            BigInt(proofDataRaw.pi_c[0]), 
+            BigInt(proofDataRaw.pi_c[0]),
             BigInt(proofDataRaw.pi_c[1])
         ],
         publicSignals: publicSignalsRaw // Array originale, non invertito
