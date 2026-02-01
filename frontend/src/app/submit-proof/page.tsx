@@ -320,9 +320,8 @@ export default function SubmitProofPage() {
             BigInt(proofDataRaw.pi_a[1])
         ],
         pi_b: [
-          // UNICO SWAP NECESSARIO: Scambia [0][1] con [0][0] ecc.
-          [BigInt(proofDataRaw.pi_b[0][1]), BigInt(proofDataRaw.pi_b[0][0])], 
-          [BigInt(proofDataRaw.pi_b[1][1]), BigInt(proofDataRaw.pi_b[1][0])]
+          [BigInt(proofDataRaw.pi_b[0][0]), BigInt(proofDataRaw.pi_b[0][1])],
+          [BigInt(proofDataRaw.pi_b[1][0]), BigInt(proofDataRaw.pi_b[1][1])]
         ],
         pi_c: [
             BigInt(proofDataRaw.pi_c[0]), 
