@@ -18,10 +18,11 @@ contract DeployScript is Script {
     ///      because our ProofVerifier calls verifyProof() which only exists on the inner contract.
     address constant GMAIL_VERIFIER = 0x8391c7A7CEf5693d2BF4dB5377210582340a89a5;
     
-    /// @notice Verifier Groth16 per Succinct (Bisht13/SuccinctZKResidencyInvite@v3)
-    /// @dev TODO: Sostituire con l'indirizzo reale dal ZK Email Registry
-    /// @dev Per trovarlo: vai su registry.zk.email -> cerca il blueprint -> copia verifier_contract_address
-    address constant SUCCINCT_VERIFIER = 0xD6FC8cb985AEf1dB7F601c2cD7007DA83f067848; // <-- PLACEHOLDER: INSERISCI INDIRIZZO REALE
+    /// @notice Groth16 verifier per Succinct (Bisht13/SuccinctZKResidencyInvite@v3)
+    /// @dev The ZK Email registry deploys a wrapper contract (0xD6FC8cb985AEf1dB7F601c2cD7007DA83f067848) that delegates
+    ///      to the actual Groth16 verifier below. We must use the inner verifier directly
+    ///      because our ProofVerifier calls verifyProof() which only exists on the inner contract.
+    address constant SUCCINCT_VERIFIER = 0xB0c096A981e40Aa8DADB46A53f2DC159b2a0697e;
     
     // ============ DEPLOYMENT FLAGS ============
 

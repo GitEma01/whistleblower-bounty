@@ -263,8 +263,10 @@ export default function SubmitProofPage() {
       // 1. ANALISI DKIM PRELIMINARE
       // Determina quale blueprint usare basandosi sulla firma reale della mail
       let targetBlueprintSlug = blueprintSlug; // Default: quello del bounty
-      const dkimMatch = emailContent.match(/d=([a-zA-Z0-9.-]+);/);
-      const signingDomain = dkimMatch ? dkimMatch[1] : null;
+      // Extract d= from actual DKIM-Signature headers, not ARC headers.
+      // DKIM-Signature headers span multiple lines; we match the d= field after "DKIM-Signature:".
+      const dkimSigMatch = emailContent.match(/^DKIM-Signature:[\s\S]*?d=([a-zA-Z0-9.-]+);/mi);
+      const signingDomain = dkimSigMatch ? dkimSigMatch[1] : null;
 
       console.log(`📧 Email firmata da: ${signingDomain}`);
 
@@ -320,8 +322,9 @@ export default function SubmitProofPage() {
       
       // ... salvataggio stato
       // 6. SALVATAGGIO STATO
-      // Salviamo anche il dominio estratto per passarlo a submitProof
-      setExtractedDomain(signingDomain || extractedDomain); 
+      // Use the bounty's domain for on-chain submitProof (contract validates domain match).
+      // signingDomain is only needed for blueprint selection above.
+      setExtractedDomain(bountyDomain || signingDomain || extractedDomain);
       setProofData(formattedProof);
       setProofGenerated(true);
       setProofProgress('Prova valida pronta per l\'invio! 🚀');
