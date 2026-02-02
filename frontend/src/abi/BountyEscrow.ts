@@ -53,5 +53,31 @@ export const BountyEscrowABI = [
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getClaimInfo",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct BountyLib.ClaimInfo",
+        "components": [
+          { "name": "claimant", "type": "address", "internalType": "address" },
+          { "name": "claimTimestamp", "type": "uint256", "internalType": "uint256" },
+          { "name": "nullifier", "type": "bytes32", "internalType": "bytes32" },
+          { "name": "disputeDeadline", "type": "uint256", "internalType": "uint256" }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "status",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "uint8", "internalType": "enum BountyLib.BountyStatus" }],
+    "stateMutability": "view"
   }
 ] as const;

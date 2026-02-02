@@ -354,8 +354,15 @@ export default function SubmitProofPage() {
 
   // ========== UI ==========
   
-  const domainMatch = extractedDomain && bountyDomain && 
-    extractedDomain.toLowerCase() === bountyDomain.toLowerCase();
+  // Normalize DKIM signing domains for display comparison (google.com -> gmail.com)
+  const normalizeDomain = (d: string) => {
+    const lower = d.toLowerCase();
+    if (lower === 'google.com') return 'gmail.com';
+    return lower;
+  };
+
+  const domainMatch = extractedDomain && bountyDomain &&
+    normalizeDomain(extractedDomain) === normalizeDomain(bountyDomain);
   
   const allKeywordsFound = bountyKeywords.length === 0 || 
     (foundKeywords.length === bountyKeywords.length && missingKeywords.length === 0);
@@ -482,7 +489,10 @@ export default function SubmitProofPage() {
                 <div className="flex items-center justify-between">
                   <span className="text-gray-300">Dominio:</span>
                   <span className={domainMatch ? 'text-green-400' : 'text-red-400'}>
-                    {domainMatch ? '✅' : '❌'} @{extractedDomain || '???'}
+                    {domainMatch ? '✅' : '❌'} @{normalizeDomain(extractedDomain) || '???'}
+                    {extractedDomain !== normalizeDomain(extractedDomain) && (
+                      <span className="text-gray-500 text-xs ml-1">(DKIM: {extractedDomain})</span>
+                    )}
                   </span>
                 </div>
               </div>
