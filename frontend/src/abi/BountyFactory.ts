@@ -60,5 +60,16 @@ export const BountyFactoryABI = [
     "inputs": [],
     "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getStats",
+    "inputs": [],
+    "outputs": [
+      { "name": "totalBounties", "type": "uint256", "internalType": "uint256" },
+      { "name": "activeBounties", "type": "uint256", "internalType": "uint256" },
+      { "name": "totalValueLocked", "type": "uint256", "internalType": "uint256" }
+    ],
+    "stateMutability": "view"
   }
 ] as const;

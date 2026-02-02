@@ -325,10 +325,22 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
 
     // ============ INTERNAL FUNCTIONS ============
 
-    /// @notice Confronta due domini in modo case-insensitive
+    /// @notice Confronta due domini in modo case-insensitive, with DKIM alias support
+    /// @dev Gmail's DKIM signs with d=google.com, not d=gmail.com.
+    ///      This function normalizes known DKIM signing domains to their user-facing equivalents.
     function _domainsMatch(string memory a, string memory b) internal pure returns (bool) {
-        return keccak256(abi.encodePacked(_toLowerCase(a))) == 
-               keccak256(abi.encodePacked(_toLowerCase(b)));
+        string memory lowerA = _normalizeDomain(_toLowerCase(a));
+        string memory lowerB = _normalizeDomain(_toLowerCase(b));
+        return keccak256(abi.encodePacked(lowerA)) ==
+               keccak256(abi.encodePacked(lowerB));
+    }
+
+    /// @notice Maps DKIM signing domains to their user-facing domain
+    function _normalizeDomain(string memory d) internal pure returns (string memory) {
+        bytes32 h = keccak256(abi.encodePacked(d));
+        // google.com (DKIM signer) -> gmail.com (user-facing)
+        if (h == keccak256(abi.encodePacked("google.com"))) return "gmail.com";
+        return d;
     }
 
     /// @notice Converte una stringa in lowercase

@@ -268,10 +268,9 @@ export default function SubmitProofPage() {
 
       console.log(`📧 Email firmata da: ${signingDomain}`);
 
-      if (signingDomain === "gmail.com") {
+      if (signingDomain === "gmail.com" || signingDomain === "google.com") {
           console.log("🔄 Detected Gmail signature. Forcing Gmail Blueprint.");
-          // Usa SEMPRE questo blueprint se la mail è di Gmail, altrimenti il verifier on-chain fallisce
-          targetBlueprintSlug = "GitEma01/GmailDebugBlueprint@v4"; 
+          targetBlueprintSlug = "GitEma01/GmailDebugBlueprint@v4";
       } else if (signingDomain === "succinct.xyz") {
           targetBlueprintSlug = "Bisht13/SuccinctZKResidencyInvite@v3";
       }
@@ -298,40 +297,26 @@ export default function SubmitProofPage() {
       const proof = await prover.generateProof(emailContent);
       console.log("✅ SDK Proof Generated:", proof);
 
-      // 5. FORMATTAZIONE DATI PER SOLIDITY (CRUCIALE)
-      // Copiamo la logica interna dell'SDK per formattare i dati per il contratto
+      // 5. FORMATTAZIONE DATI PER SOLIDITY
+      // Use the SDK's canonical createCallData() which handles pi_b swap and formatting
       setProofProgress('Formattazione dati per Smart Contract...');
 
-      const proofDataRaw = proof.props.proofData;
-      const publicOutputsRaw = proof.props.publicOutputs;
+      const callData = await proof.createCallData();
+      // createCallData returns: [pi_a, pi_b, pi_c, publicSignals]
+      const [pi_a, pi_b, pi_c, publicSignals] = callData as [
+        bigint[], bigint[][], bigint[], bigint[]
+      ];
 
-      // A. Conversione Public Signals
-      // Assicuriamoci che siano stringhe numeriche per BigInt
-      // 1. Array lineare diretto dall'SDK (NESSUNO SWAP QUI!)
-      // Il codice interno dell'SDK conferma che i segnali vanno passati così come sono.
-      const publicSignalsRaw = proof.props.publicOutputs.map((s: string) => BigInt(s));
+      console.log("Public Signals (count:", publicSignals.length, "):", publicSignals);
 
-      console.log("🔍 Public Signals (RAW - Correct):", publicSignalsRaw);
-
-      // 2. Formattazione con SOLO lo swap di pi_b (Confermato dall'SDK)
       const formattedProof = {
-        pi_a: [
-            BigInt(proofDataRaw.pi_a[0]),
-            BigInt(proofDataRaw.pi_a[1])
-        ],
-        pi_b: [
-          [BigInt(proofDataRaw.pi_b[0][1]), BigInt(proofDataRaw.pi_b[0][0])],
-          [BigInt(proofDataRaw.pi_b[1][1]), BigInt(proofDataRaw.pi_b[1][0])]
-        ],
-        pi_c: [
-            BigInt(proofDataRaw.pi_c[0]),
-            BigInt(proofDataRaw.pi_c[1])
-        ],
-        publicSignals: publicSignalsRaw // Array originale, non invertito
+        pi_a,
+        pi_b,
+        pi_c,
+        publicSignals,
       };
 
-      // 3. Verifica visiva finale prima dell'invio
-      console.log("🚀 READY TO SUBMIT:", formattedProof);
+      console.log("READY TO SUBMIT (via createCallData):", formattedProof);
       
       // ... salvataggio stato
       // 6. SALVATAGGIO STATO

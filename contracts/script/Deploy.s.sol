@@ -12,9 +12,11 @@ contract DeployScript is Script {
     
     // ============ VERIFIER ADDRESSES (da ZK Email Registry) ============
     
-    /// @notice Verifier Groth16 per Gmail (GitEma01/GmailDebugBlueprint@v2)
-    /// @dev Deployato su Base Sepolia (Chain ID: 84532)
-    address constant GMAIL_VERIFIER = 0x00E251c683212d803FE2caf753B059991e6C4D5d;
+    /// @notice Groth16 verifier per Gmail (GitEma01/GmailDebugBlueprint@v4)
+    /// @dev The ZK Email registry deploys a wrapper contract (0x9e310d2d...) that delegates
+    ///      to the actual Groth16 verifier below. We must use the inner verifier directly
+    ///      because our ProofVerifier calls verifyProof() which only exists on the inner contract.
+    address constant GMAIL_VERIFIER = 0x8391c7A7CEf5693d2BF4dB5377210582340a89a5;
     
     /// @notice Verifier Groth16 per Succinct (Bisht13/SuccinctZKResidencyInvite@v3)
     /// @dev TODO: Sostituire con l'indirizzo reale dal ZK Email Registry
@@ -164,7 +166,7 @@ contract CreateTestBountyScript is Script {
       function run() public {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address factoryAddress = vm.envAddress("NEXT_PUBLIC_BOUNTY_FACTORY_ADDRESS");
-        address mockVerifier = 0x00E251c683212d803FE2caf753B059991e6C4D5d;
+        address mockVerifier = 0x8391c7A7CEf5693d2BF4dB5377210582340a89a5;
         console.log("Creating test bounty...");
         
         vm.startBroadcast(deployerPrivateKey);
@@ -172,13 +174,12 @@ contract CreateTestBountyScript is Script {
         BountyFactory factory = BountyFactory(factoryAddress);
 
         // Crea un bounty di test con keywords
-        string[] memory keywords = new string[](2);
+        string[] memory keywords = new string[](1);
         keywords[0] = "fraud";
-        keywords[1] = "confidential";
 
         (uint256 bountyId, address escrowAddress) = factory.createBounty{value: 0.01 ether}(
             "gmail.com",
-            "Test bounty: Looking for evidence of corporate fraud from Gmail users. Required keywords: fraud, confidential",
+            "Test bounty: Looking for evidence of corporate fraud from Gmail users. Required keyword: fraud",
             block.timestamp + 30 days,
             keywords,
             mockVerifier
@@ -191,7 +192,7 @@ contract CreateTestBountyScript is Script {
         console.log("   Bounty ID:", bountyId);
         console.log("   Escrow address:", escrowAddress);
         console.log("   Domain: gmail.com");
-        console.log("   Required keywords: fraud, confidential");
+        console.log("   Required keyword: fraud");
         console.log("   Reward: 0.01 ETH");
         console.log("");
     }

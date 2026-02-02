@@ -6,37 +6,39 @@ import "../src/ProofVerifier.sol";
 import "../src/libraries/BountyLib.sol";
 
 /// @notice Mock Groth16 Verifier che accetta sempre le prove
-contract MockGroth16VerifierValid is IGroth16Verifier {
+/// @dev Matches the real ZK Email registry verifier interface: verifyProof() returns bool.
+///      Uses uint256[2] for publicSignals to match the test's 2-element arrays.
+contract MockGroth16VerifierValid {
     function verifyProof(
         uint256[2] calldata,
         uint256[2][2] calldata,
         uint256[2] calldata,
-        uint256[] calldata
-    ) external pure override returns (bool) {
+        uint256[2] calldata
+    ) external pure returns (bool) {
         return true;
     }
 }
 
-/// @notice Mock Groth16 Verifier che rifiuta sempre le prove
-contract MockGroth16VerifierInvalid is IGroth16Verifier {
+/// @notice Mock Groth16 Verifier che rifiuta sempre le prove (returns false)
+contract MockGroth16VerifierInvalid {
     function verifyProof(
         uint256[2] calldata,
         uint256[2][2] calldata,
         uint256[2] calldata,
-        uint256[] calldata
-    ) external pure override returns (bool) {
+        uint256[2] calldata
+    ) external pure returns (bool) {
         return false;
     }
 }
 
 /// @notice Mock Groth16 Verifier che reverte
-contract MockGroth16VerifierReverting is IGroth16Verifier {
+contract MockGroth16VerifierReverting {
     function verifyProof(
         uint256[2] calldata,
         uint256[2][2] calldata,
         uint256[2] calldata,
-        uint256[] calldata
-    ) external pure override returns (bool) {
+        uint256[2] calldata
+    ) external pure {
         revert("Verifier error");
     }
 }
@@ -159,44 +161,44 @@ contract ProofVerifierTest is Test {
         vm.expectEmit(false, true, false, false);
         emit ProofVerified("gmail.com", "gmail.com", prover, bytes32(0), block.timestamp, "");
         
-        bool result = verifier.verifyProofForDomain(proofData, "gmail.com", prover,mockVerifier);
-        
+        bool result = verifier.verifyProofForDomain(proofData, "gmail.com", prover, address(mockValidVerifier));
+
         assertTrue(result);
-        
+
         (,uint256 verified,,) = verifier.getStats();
         assertEq(verified, 1);
     }
 
     function test_VerifyProofForDomain_InvalidProof() public {
         verifier.registerVerifier("gmail.com", address(mockInvalidVerifier));
-        
+
         BountyLib.ProofData memory proofData = _createValidProofData();
-        
+
         vm.expectEmit(false, true, false, false);
         emit ProofVerificationFailed("gmail.com", "gmail.com", prover, "", block.timestamp);
-        
-        bool result = verifier.verifyProofForDomain(proofData, "gmail.com", prover,mockVerifier);
-        
+
+        bool result = verifier.verifyProofForDomain(proofData, "gmail.com", prover, address(mockInvalidVerifier));
+
         assertFalse(result);
-        
+
         (,,uint256 failed,) = verifier.getStats();
         assertEq(failed, 1);
     }
 
-    function test_VerifyProofForDomain_VerifierNotFound() public {
+    function test_VerifyProofForDomain_ZeroVerifierAddress() public {
         BountyLib.ProofData memory proofData = _createValidProofData();
-        
-        vm.expectRevert(abi.encodeWithSelector(ProofVerifier.VerifierNotFound.selector, "gmail.com"));
-        verifier.verifyProofForDomain(proofData, "gmail.com", prover,mockVerifier);
+
+        vm.expectRevert(ProofVerifier.InvalidVerifierAddress.selector);
+        verifier.verifyProofForDomain(proofData, "gmail.com", prover, address(0));
     }
 
     function test_VerifyProofForDomain_VerifierReverts() public {
         verifier.registerVerifier("gmail.com", address(mockRevertingVerifier));
-        
+
         BountyLib.ProofData memory proofData = _createValidProofData();
-        
+
         // Verifier reverts, but verifyProofForDomain should catch it and return false
-        bool result = verifier.verifyProofForDomain(proofData, "gmail.com", prover,mockVerifier);
+        bool result = verifier.verifyProofForDomain(proofData, "gmail.com", prover, address(mockRevertingVerifier));
         
         assertFalse(result);
     }
@@ -208,7 +210,7 @@ contract ProofVerifierTest is Test {
         
         BountyLib.ProofData memory proofData = _createValidProofData();
         
-        bool result = testVerifier.verifyProofForDomain(proofData, "unregistered.com", prover,mockVerifier);
+        bool result = testVerifier.verifyProofForDomain(proofData, "unregistered.com", prover, mockVerifier);
         
         assertTrue(result);
     }
@@ -218,7 +220,7 @@ contract ProofVerifierTest is Test {
         
         BountyLib.ProofData memory proofData = _createInvalidProofData();
         
-        bool result = testVerifier.verifyProofForDomain(proofData, "unregistered.com", prover,mockVerifier);
+        bool result = testVerifier.verifyProofForDomain(proofData, "unregistered.com", prover, mockVerifier);
         
         assertFalse(result);
     }
@@ -269,8 +271,8 @@ contract ProofVerifierTest is Test {
         verifier.registerVerifier("succinct.xyz", address(mockValidVerifier));
         
         BountyLib.ProofData memory proofData = _createValidProofData();
-        verifier.verifyProofForDomain(proofData, "gmail.com", prover,mockVerifier);
-        
+        verifier.verifyProofForDomain(proofData, "gmail.com", prover, address(mockValidVerifier));
+
         (uint256 domains, uint256 verified, uint256 failed, bool testMode) = verifier.getStats();
         
         assertEq(domains, 2);

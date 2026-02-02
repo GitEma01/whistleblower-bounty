@@ -6,14 +6,13 @@ import "./libraries/BountyLib.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @notice Interfaccia standard per i Verifier Groth16 generati da ZK Email Registry
-interface IGroth16Verifier {
-    function verifyProof(
-        uint256[2] calldata _pA,
-        uint256[2][2] calldata _pB,
-        uint256[2] calldata _pC,
-        uint256[] calldata _pubSignals
-    ) external view returns (bool);
-}
+/// @dev ZK Email registry verifiers use fixed-size uint256[N] for public signals,
+///      where N varies per circuit (e.g. 7 for Gmail, 8 for Succinct).
+///      We cannot use a Solidity interface here because the array size differs.
+///      Instead, we use a low-level staticcall with manually encoded calldata.
+///      The verifier function signature is: verify(uint256[2],uint256[2][2],uint256[2],uint256[N])
+///      We encode pi_a, pi_b, pi_c as fixed arrays and publicSignals as a fixed array
+///      by writing them directly into the ABI encoding (no length prefix, no offset).
 
 /// @title ProofVerifier
 /// @notice Router che indirizza le prove ZK ai verifier Groth16 corretti per ogni dominio
@@ -205,17 +204,44 @@ contract ProofVerifier is IProofVerifier, Ownable {
             revert InvalidVerifierAddress();
         }
         
-        // Chiama il verifier Groth16
+        // Call the Groth16 verifier using low-level staticcall.
+        // ZK Email registry verifiers expect fixed-size uint256[N] for public signals,
+        // so the function selector depends on N. We compute the selector dynamically
+        // and encode the public signals as a fixed-size array (no length prefix/offset).
         bool isValid;
-        try IGroth16Verifier(verifier).verifyProof(
-            proofData.pi_a,
-            proofData.pi_b,
-            proofData.pi_c,
-            proofData.publicSignals
-        ) returns (bool result) {
-            isValid = result;
-        } catch {
-            isValid = false;
+        {
+            uint256 n = proofData.publicSignals.length;
+
+            // Build the function signature string: "verifyProof(uint256[2],uint256[2][2],uint256[2],uint256[N])"
+            // ZK Email registry verifiers use "verifyProof" and return a bool.
+            bytes memory sig = abi.encodePacked(
+                "verifyProof(uint256[2],uint256[2][2],uint256[2],uint256[",
+                _uintToString(n),
+                "])"
+            );
+            bytes4 selector = bytes4(keccak256(sig));
+
+            // Encode calldata: selector + pi_a(2) + pi_b(4) + pi_c(2) + pubSignals(N)
+            // All values are uint256, encoded as 32-byte words with no offsets (all fixed-size).
+            bytes memory payload = abi.encodePacked(selector);
+            // pi_a[0], pi_a[1]
+            payload = abi.encodePacked(payload, proofData.pi_a[0], proofData.pi_a[1]);
+            // pi_b[0][0], pi_b[0][1], pi_b[1][0], pi_b[1][1]
+            payload = abi.encodePacked(payload, proofData.pi_b[0][0], proofData.pi_b[0][1], proofData.pi_b[1][0], proofData.pi_b[1][1]);
+            // pi_c[0], pi_c[1]
+            payload = abi.encodePacked(payload, proofData.pi_c[0], proofData.pi_c[1]);
+            // publicSignals[0..N-1]
+            for (uint256 i = 0; i < n; i++) {
+                payload = abi.encodePacked(payload, proofData.publicSignals[i]);
+            }
+
+            // The verifyProof() function returns a bool.
+            (bool success, bytes memory returnData) = verifier.staticcall(payload);
+            if (success && returnData.length >= 32) {
+                isValid = abi.decode(returnData, (bool));
+            } else {
+                isValid = false;
+            }
         }
         
         if (isValid) {
@@ -365,6 +391,21 @@ contract ProofVerifier is IProofVerifier, Ownable {
     function _extractNullifier(uint256[] calldata publicSignals) internal pure returns (bytes32) {
         if (publicSignals.length < 2) return bytes32(0);
         return keccak256(abi.encodePacked(publicSignals[0], publicSignals[1]));
+    }
+
+    /// @notice Converts a uint to its decimal string representation
+    function _uintToString(uint256 value) internal pure returns (bytes memory) {
+        if (value == 0) return "0";
+        uint256 temp = value;
+        uint256 digits;
+        while (temp != 0) { digits++; temp /= 10; }
+        bytes memory buffer = new bytes(digits);
+        while (value != 0) {
+            digits--;
+            buffer[digits] = bytes1(uint8(48 + value % 10));
+            value /= 10;
+        }
+        return buffer;
     }
 
     /// @notice Converte una stringa in lowercase

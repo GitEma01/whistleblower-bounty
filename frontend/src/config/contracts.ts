@@ -6,7 +6,7 @@ export const CONTRACTS = {
 } as const;
 
 export const BLUEPRINTS = {
-  "gmail.com": "0x00E251c683212d803FE2caf753B059991e6C4D5d", // Verifier Gmail reale
+  "gmail.com": "0x8391c7a7cef5693d2bf4db5377210582340a89a5", // Inner Groth16 verifier for Gmail (GitEma01/GmailDebugBlueprint@v4)
   "succinct.xyz": "0xD6FC8cb985AEf1dB7F601c2cD7007DA83f067848" // Verifier Succinct (o placeholder)
 };
 
