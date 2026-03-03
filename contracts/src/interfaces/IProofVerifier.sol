@@ -5,12 +5,75 @@ import "../libraries/BountyLib.sol";
 
 /// @title IProofVerifier
 /// @notice Interfaccia per il contratto che verifica le prove ZK
+/// @dev Aggiornata per supportare verifica per dominio specifico
 interface IProofVerifier {
 
-    /// @notice Verifica una prova ZK
+    // ============ EVENTS ============
+
+    /// @notice Emesso quando un verifier viene registrato per un dominio
+    event VerifierRegistered(
+        string indexed domainIndexed,
+        string domain,
+        address verifierAddress,
+        uint256 timestamp
+    );
+
+    /// @notice Emesso quando una prova ZK viene verificata con successo
+    event ProofVerified(
+        string indexed domainIndexed,
+        string domain,
+        address indexed prover,
+        bytes32 nullifier,
+        uint256 timestamp,
+        string message
+    );
+
+    /// @notice Emesso quando una prova ZK fallisce la verifica
+    event ProofVerificationFailed(
+        string indexed domainIndexed,
+        string domain,
+        address indexed prover,
+        string reason,
+        uint256 timestamp
+    );
+
+    // ============ VERIFICATION FUNCTIONS ============
+
+    /// @notice Verifica una prova ZK (legacy - solo test mode)
     /// @param proofData I dati della prova
     /// @return valid true se la prova è valida
     function verifyProof(BountyLib.ProofData calldata proofData) external view returns (bool valid);
+
+    /// @notice Verifica una prova ZK per un dominio specifico
+    /// @param proofData I dati della prova Groth16
+    /// @param domain Il dominio email per cui verificare
+    /// @param prover L'indirizzo di chi sottomette la prova
+    /// @return valid true se la prova è valida
+    function verifyProofForDomain(
+        BountyLib.ProofData calldata proofData,
+        string calldata domain,
+        address prover,
+	address _verifierAddress
+    ) external returns (bool valid);
+
+    // ============ DOMAIN MANAGEMENT ============
+
+    /// @notice Registra un verifier Groth16 per un dominio
+    /// @param domain Il dominio email (es. "gmail.com")
+    /// @param verifierAddress L'indirizzo del contratto Groth16 Verifier
+    function registerVerifier(string calldata domain, address verifierAddress) external;
+
+    /// @notice Ottiene l'indirizzo del verifier per un dominio
+    /// @param domain Il dominio da cercare
+    /// @return L'indirizzo del verifier (address(0) se non registrato)
+    function getVerifier(string calldata domain) external view returns (address);
+
+    /// @notice Verifica se un dominio ha un verifier registrato
+    /// @param domain Il dominio da verificare
+    /// @return true se il dominio è supportato
+    function isDomainSupported(string calldata domain) external view returns (bool);
+
+    // ============ EXTRACTION FUNCTIONS ============
 
     /// @notice Estrae il domain hash dai public signals
     /// @param publicSignals I segnali pubblici della prova

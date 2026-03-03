@@ -120,8 +120,8 @@ export function useZkEmailProof() {
           BigInt(proofData.pi_a[1])
         ] as [bigint, bigint],
         pi_b: [
-          [BigInt(proofData.pi_b[0][0]), BigInt(proofData.pi_b[0][1])] as [bigint, bigint],
-          [BigInt(proofData.pi_b[1][0]), BigInt(proofData.pi_b[1][1])] as [bigint, bigint]
+          [BigInt(proofData.pi_b[0][1]), BigInt(proofData.pi_b[0][0])] as [bigint, bigint],
+          [BigInt(proofData.pi_b[1][1]), BigInt(proofData.pi_b[1][0])] as [bigint, bigint]
         ] as [[bigint, bigint], [bigint, bigint]],
         pi_c: [
           BigInt(proofData.pi_c[0]),

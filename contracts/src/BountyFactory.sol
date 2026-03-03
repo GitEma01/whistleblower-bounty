@@ -54,7 +54,8 @@ contract BountyFactory is IBountyFactory, Ownable {
         string calldata domain,
         string calldata description,
         uint256 deadline,
-        string[] calldata keywords
+        string[] calldata keywords,
+	address _groth16Verifier
     ) external payable returns (uint256 bountyId, address escrowAddress) {
         // Validazioni
         if (bytes(domain).length == 0) revert InvalidDomain();
@@ -74,7 +75,9 @@ contract BountyFactory is IBountyFactory, Ownable {
             deadline,
             msg.sender,
             proofVerifier,
+            _groth16Verifier,
             keywords
+
         );
 
         escrowAddress = address(escrow);

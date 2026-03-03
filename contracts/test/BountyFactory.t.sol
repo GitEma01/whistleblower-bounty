@@ -18,11 +18,12 @@ contract BountyFactoryTest is Test {
     string constant DOMAIN = "testcompany.com";
     string constant DESCRIPTION = "Looking for evidence of fraud";
     uint256 constant REWARD = 1 ether;
-
+    address mockGroth16Verifier = address(0x999);
     string[] keywords;
 
     function setUp() public {
-        verifier = new ProofVerifier(address(0));
+        // Deploy ProofVerifier in TEST MODE (true)
+        verifier = new ProofVerifier(true);
         factory = new BountyFactory(address(verifier));
 
         vm.deal(creator, 100 ether);
@@ -41,7 +42,8 @@ contract BountyFactoryTest is Test {
             DOMAIN,
             DESCRIPTION,
             deadline,
-            keywords
+            keywords,
+            mockGroth16Verifier
         );
 
         assertEq(bountyId, 0);
@@ -70,7 +72,8 @@ contract BountyFactoryTest is Test {
             DOMAIN,
             DESCRIPTION,
             deadline,
-            noKeywords
+            noKeywords,
+            mockGroth16Verifier
         );
 
         string[] memory storedKeywords = factory.getBountyKeywords(bountyId);
@@ -86,7 +89,7 @@ contract BountyFactoryTest is Test {
 
         vm.prank(creator);
         vm.expectRevert(BountyFactory.TooManyKeywords.selector);
-        factory.createBounty{value: REWARD}(DOMAIN, DESCRIPTION, deadline, tooMany);
+        factory.createBounty{value: REWARD}(DOMAIN, DESCRIPTION, deadline, tooMany, mockGroth16Verifier);
     }
 
     function test_GetBountyDetails_IncludesKeywords() public {
@@ -97,7 +100,8 @@ contract BountyFactoryTest is Test {
             DOMAIN,
             DESCRIPTION,
             deadline,
-            keywords
+            keywords,
+	    mockGroth16Verifier
         );
 
         BountyLib.BountyDetails memory details = factory.getBounty(bountyId);
@@ -105,5 +109,70 @@ contract BountyFactoryTest is Test {
         assertEq(details.domain, DOMAIN);
         assertEq(details.keywords.length, 2);
         assertEq(details.hashedKeywords.length, 2);
+    }
+
+    function test_GetActiveBounties() public {
+        uint256 deadline = block.timestamp + 30 days;
+
+        vm.prank(creator);
+        factory.createBounty{value: REWARD}(DOMAIN, DESCRIPTION, deadline, keywords, mockGroth16Verifier);
+
+        vm.prank(creator);
+        factory.createBounty{value: REWARD}("other.com", DESCRIPTION, deadline, keywords, mockGroth16Verifier);
+
+        uint256[] memory activeBounties = factory.getActiveBounties();
+        assertEq(activeBounties.length, 2);
+    }
+
+    function test_GetBountiesByCreator() public {
+        uint256 deadline = block.timestamp + 30 days;
+
+        vm.prank(creator);
+        factory.createBounty{value: REWARD}(DOMAIN, DESCRIPTION, deadline, keywords, mockGroth16Verifier);
+
+        vm.prank(creator);
+        factory.createBounty{value: REWARD}("other.com", DESCRIPTION, deadline, keywords, mockGroth16Verifier);
+
+        vm.prank(whistleblower);
+        vm.deal(whistleblower, 10 ether);
+        factory.createBounty{value: REWARD}("third.com", DESCRIPTION, deadline, keywords, mockGroth16Verifier);
+
+        uint256[] memory creatorBounties = factory.getBountiesByCreator(creator);
+        assertEq(creatorBounties.length, 2);
+
+        uint256[] memory whistleblowerBounties = factory.getBountiesByCreator(whistleblower);
+        assertEq(whistleblowerBounties.length, 1);
+    }
+
+    function test_GetStats() public {
+        uint256 deadline = block.timestamp + 30 days;
+
+        vm.prank(creator);
+        factory.createBounty{value: REWARD}(DOMAIN, DESCRIPTION, deadline, keywords, mockGroth16Verifier);
+
+        vm.prank(creator);
+        factory.createBounty{value: 2 ether}("other.com", DESCRIPTION, deadline, keywords, mockGroth16Verifier);
+
+        (uint256 totalBounties, uint256 activeBounties, uint256 totalValueLocked) = factory.getStats();
+        
+        assertEq(totalBounties, 2);
+        assertEq(activeBounties, 2);
+        assertEq(totalValueLocked, 3 ether);
+    }
+
+    function test_IsValidEscrow() public {
+        uint256 deadline = block.timestamp + 30 days;
+
+        vm.prank(creator);
+        (, address escrowAddress) = factory.createBounty{value: REWARD}(
+            DOMAIN,
+            DESCRIPTION,
+            deadline,
+            keywords,
+            mockGroth16Verifier
+        );
+
+        assertTrue(factory.isValidEscrow(escrowAddress));
+        assertFalse(factory.isValidEscrow(address(0x1234)));
     }
 }

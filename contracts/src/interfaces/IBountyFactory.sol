@@ -38,7 +38,8 @@ interface IBountyFactory {
         string calldata domain,
         string calldata description,
         uint256 deadline,
-        string[] calldata keywords
+        string[] calldata keywords,
+        address _groth16Verifier
     ) external payable returns (uint256 bountyId, address escrowAddress);
 
     /// @notice Restituisce i dettagli di un bounty

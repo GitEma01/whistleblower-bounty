@@ -23,6 +23,9 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
     address public creator;
     uint256 public createdAt;
 
+    /// @notice indirizzo del verifier
+    address public groth16Verifier;
+
     /// @notice Keywords in chiaro (per lettura frontend)
     string[] private _keywords;
 
@@ -35,7 +38,7 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
     /// @notice Riferimento al contratto factory
     address public immutable factory;
 
-    /// @notice Riferimento al contratto verifier
+    /// @notice Riferimento al contratto verifier (Router)
     IProofVerifier public immutable proofVerifier;
 
     /// @notice Mapping dei contributori e i loro importi
@@ -46,6 +49,17 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
 
     /// @notice Mapping dei nullifier già utilizzati
     mapping(bytes32 => bool) public usedNullifiers;
+
+    // ============ EVENTS ============
+
+    /// @notice Emesso quando una prova viene sottomessa con successo
+    event ProofSubmittedWithDomain(
+        address indexed claimant,
+        bytes32 nullifier,
+        string domain,
+        uint256 timestamp,
+        string message
+    );
 
     // ============ ERRORS ============
 
@@ -88,6 +102,7 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
         uint256 _deadline,
         address _creator,
         address _proofVerifier,
+        address _groth16Verifier,
         string[] memory _keywordsInput
     ) payable {
         require(_deadline > block.timestamp + BountyLib.MIN_BOUNTY_DURATION, "Deadline too soon");
@@ -98,6 +113,7 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
 
         factory = msg.sender;
         proofVerifier = IProofVerifier(_proofVerifier);
+        groth16Verifier = _groth16Verifier;
 
         bountyId = _id;
         domain = _domain;
@@ -138,22 +154,32 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
     }
 
     /// @inheritdoc IBountyEscrow
+    /// @notice Sottomette una prova ZK - usa il ProofVerifier Router per la verifica
     function submitProof(
         BountyLib.ProofData calldata proofData,
         string calldata provenDomain,
         bytes32[] calldata keywordHashes
     ) external onlyWhenOpen nonReentrant {
-        // 1. Verifica la prova ZK
-        bool isValid = proofVerifier.verifyProof(proofData);
-        if (!isValid) revert InvalidProof();
-
-        // 2. Verifica il dominio (case-insensitive)
+        
+        // 1. Verifica il dominio (case-insensitive)
         if (!_domainsMatch(provenDomain, domain)) revert DomainMismatch();
 
-        // 3. Verifica le keywords (se richieste)
+        // 2. Verifica le keywords (se richieste)
         if (_hashedKeywords.length > 0) {
             if (!_verifyKeywordHashes(keywordHashes)) revert KeywordsMismatch();
         }
+
+        // 3. Verifica la prova ZK tramite il Router (ProofVerifier)
+        // Questo chiama il verifier Groth16 corretto per il dominio
+        // e emette eventi visibili su BaseScan
+        bool isValid = proofVerifier.verifyProofForDomain(
+            proofData,
+            domain,
+            msg.sender,
+	    groth16Verifier
+        );
+        
+        if (!isValid) revert InvalidProof();
 
         // 4. Estrai e verifica il nullifier
         bytes32 nullifier = proofVerifier.extractNullifier(proofData.publicSignals);
@@ -172,7 +198,17 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
             disputeDeadline: block.timestamp + BountyLib.DISPUTE_PERIOD
         });
 
+        // Evento standard
         emit ProofSubmitted(msg.sender, nullifier);
+        
+        // Evento dettagliato visibile su BaseScan
+        emit ProofSubmittedWithDomain(
+            msg.sender,
+            nullifier,
+            domain,
+            block.timestamp,
+            unicode"🎯 Whistleblower proof accepted! Dispute period started. Reward claimable in 24h."
+        );
     }
 
     /// @inheritdoc IBountyEscrow
@@ -289,10 +325,22 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
 
     // ============ INTERNAL FUNCTIONS ============
 
-    /// @notice Confronta due domini in modo case-insensitive
+    /// @notice Confronta due domini in modo case-insensitive, with DKIM alias support
+    /// @dev Gmail's DKIM signs with d=google.com, not d=gmail.com.
+    ///      This function normalizes known DKIM signing domains to their user-facing equivalents.
     function _domainsMatch(string memory a, string memory b) internal pure returns (bool) {
-        return keccak256(abi.encodePacked(_toLowerCase(a))) == 
-               keccak256(abi.encodePacked(_toLowerCase(b)));
+        string memory lowerA = _normalizeDomain(_toLowerCase(a));
+        string memory lowerB = _normalizeDomain(_toLowerCase(b));
+        return keccak256(abi.encodePacked(lowerA)) ==
+               keccak256(abi.encodePacked(lowerB));
+    }
+
+    /// @notice Maps DKIM signing domains to their user-facing domain
+    function _normalizeDomain(string memory d) internal pure returns (string memory) {
+        bytes32 h = keccak256(abi.encodePacked(d));
+        // google.com (DKIM signer) -> gmail.com (user-facing)
+        if (h == keccak256(abi.encodePacked("google.com"))) return "gmail.com";
+        return d;
     }
 
     /// @notice Converte una stringa in lowercase
